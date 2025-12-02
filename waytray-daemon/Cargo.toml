@@ -1,0 +1,37 @@
+[package]
+name = "waytray-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Daemon component for WayTray - caches system tray items via StatusNotifierItem"
+
+[lib]
+name = "waytray_daemon"
+path = "src/lib.rs"
+
+[[bin]]
+name = "waytray-daemon"
+path = "src/main.rs"
+
+[dependencies]
+# D-Bus
+zbus = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Async utilities
+futures = "0.3"
