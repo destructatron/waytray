@@ -2,11 +2,21 @@
 //!
 //! This library provides the core types and functionality for the WayTray system tray daemon.
 //! It implements the StatusNotifierItem (SNI) host protocol and caches tray items for clients.
+//!
+//! The daemon now supports a modular architecture where different data sources (tray items,
+//! battery status, system info, etc.) are implemented as modules.
 
 pub mod cache;
+pub mod config;
 pub mod dbus_service;
 pub mod host;
+pub mod modules;
+pub mod notifications;
 pub mod watcher;
+
+// Re-export commonly used types
+pub use config::Config;
+pub use modules::{ItemAction, Module, ModuleContext, ModuleEvent, ModuleInfo, ModuleItem, ModuleRegistry, Urgency};
 
 use serde::{Deserialize, Serialize};
 

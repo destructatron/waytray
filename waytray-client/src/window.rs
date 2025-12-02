@@ -1,4 +1,6 @@
 //! Main window for the WayTray client
+//!
+//! Uses a horizontal FlowBox for left/right arrow navigation like KDE's system tray.
 
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -7,8 +9,8 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use crate::daemon_proxy::DaemonClient;
-use crate::tray_item::TrayItemRow;
-use waytray_daemon::TrayItem;
+use crate::module_item::ModuleItemWidget;
+use waytray_daemon::ModuleItem;
 
 mod imp {
     use super::*;
@@ -17,7 +19,7 @@ mod imp {
     use gtk4::subclass::window::WindowImpl;
 
     pub struct WayTrayWindow {
-        pub list_box: gtk4::ListBox,
+        pub flow_box: gtk4::FlowBox,
         pub scrolled_window: gtk4::ScrolledWindow,
         pub status_label: gtk4::Label,
         pub main_box: gtk4::Box,
@@ -27,7 +29,7 @@ mod imp {
     impl Default for WayTrayWindow {
         fn default() -> Self {
             Self {
-                list_box: gtk4::ListBox::new(),
+                flow_box: gtk4::FlowBox::new(),
                 scrolled_window: gtk4::ScrolledWindow::new(),
                 status_label: gtk4::Label::new(Some("Connecting to daemon...")),
                 main_box: gtk4::Box::new(gtk4::Orientation::Vertical, 0),
@@ -51,35 +53,38 @@ mod imp {
 
             // Configure window
             obj.set_title(Some("System Tray"));
-            obj.set_default_size(300, 400);
+            obj.set_default_size(600, 60);
             obj.set_resizable(true);
 
-            // Configure the list box
-            self.list_box.set_selection_mode(gtk4::SelectionMode::Single);
-            self.list_box.set_activate_on_single_click(false);
-            self.list_box.add_css_class("boxed-list");
+            // Configure the flow box for horizontal single-row layout
+            self.flow_box.set_orientation(gtk4::Orientation::Horizontal);
+            self.flow_box.set_selection_mode(gtk4::SelectionMode::Single);
+            self.flow_box.set_homogeneous(false);
+            self.flow_box.set_max_children_per_line(u32::MAX);
+            self.flow_box.set_min_children_per_line(1);
+            self.flow_box.set_activate_on_single_click(false);
 
-            // Set accessible properties for the list
-            self.list_box
+            // Set accessible properties for the flow box
+            self.flow_box
                 .set_accessible_role(gtk4::AccessibleRole::List);
 
-            // Handle row activation (double-click or Enter)
-            self.list_box.connect_row_activated(glib::clone!(
+            // Handle child activation (double-click or Enter from FlowBox)
+            self.flow_box.connect_child_activated(glib::clone!(
                 #[weak]
                 obj,
-                move |_, row| {
-                    if let Some(tray_row) = row.downcast_ref::<TrayItemRow>() {
-                        obj.activate_item(tray_row);
+                move |_, child| {
+                    if let Some(item_widget) = child.downcast_ref::<ModuleItemWidget>() {
+                        obj.activate_item(item_widget);
                     }
                 }
             ));
 
-            // Configure scrolled window
-            self.scrolled_window.set_child(Some(&self.list_box));
-            self.scrolled_window.set_vexpand(true);
+            // Configure scrolled window for horizontal scrolling only
+            self.scrolled_window.set_child(Some(&self.flow_box));
+            self.scrolled_window.set_vexpand(false);
             self.scrolled_window.set_hexpand(true);
             self.scrolled_window
-                .set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+                .set_policy(gtk4::PolicyType::Automatic, gtk4::PolicyType::Never);
 
             // Configure status label
             self.status_label.set_margin_top(12);
@@ -165,14 +170,14 @@ impl WayTrayWindow {
         });
     }
 
-    /// Refresh the list of tray items
+    /// Refresh the list of module items
     async fn refresh_items(&self) {
         let client = self.imp().client.borrow().clone();
         let Some(client) = client else {
             return;
         };
 
-        match client.get_items().await {
+        match client.get_all_module_items().await {
             Ok(items) => {
                 self.update_items(&items);
             }
@@ -184,40 +189,40 @@ impl WayTrayWindow {
     }
 
     /// Update the displayed items
-    fn update_items(&self, items: &[TrayItem]) {
+    fn update_items(&self, items: &[ModuleItem]) {
         let imp = self.imp();
 
         // Clear existing items
-        while let Some(child) = imp.list_box.first_child() {
-            imp.list_box.remove(&child);
+        while let Some(child) = imp.flow_box.first_child() {
+            imp.flow_box.remove(&child);
         }
 
         if items.is_empty() {
-            imp.status_label.set_text("No tray items");
+            imp.status_label.set_text("No items");
             imp.status_label.set_visible(true);
         } else {
             imp.status_label.set_visible(false);
 
             for item in items {
-                let row = TrayItemRow::new();
-                row.set_item(item.clone());
+                let widget = ModuleItemWidget::new();
+                widget.set_item(item.clone());
 
                 // Connect signals
                 let window = self.clone();
-                row.connect_activate_item(move |row| {
-                    window.activate_item(row);
+                widget.connect_activate_item(move |widget| {
+                    window.activate_item(widget);
                 });
 
                 let window = self.clone();
-                row.connect_context_menu_item(move |row| {
-                    window.show_context_menu(row);
+                widget.connect_context_menu_item(move |widget| {
+                    window.show_context_menu(widget);
                 });
 
-                imp.list_box.append(&row);
+                imp.flow_box.append(&widget);
             }
 
             // Focus the first item
-            if let Some(first) = imp.list_box.row_at_index(0) {
+            if let Some(first) = imp.flow_box.child_at_index(0) {
                 first.grab_focus();
             }
         }
@@ -229,6 +234,7 @@ impl WayTrayWindow {
 
         glib::spawn_future_local(async move {
             loop {
+                // Listen for both legacy and module signals
                 match client.wait_for_items_changed().await {
                     Ok(()) => {
                         tracing::debug!("Items changed, refreshing");
@@ -244,15 +250,42 @@ impl WayTrayWindow {
         });
     }
 
-    /// Activate a tray item (primary action)
-    fn activate_item(&self, row: &TrayItemRow) {
-        let Some(item_id) = row.item_id() else {
+    /// Activate a module item (invoke default action)
+    fn activate_item(&self, widget: &ModuleItemWidget) {
+        let Some(item_id) = widget.item_id() else {
             return;
         };
 
-        // If item is menu-only, show context menu instead
-        if row.is_menu_only() {
-            self.show_context_menu(row);
+        // Get the default action for this item
+        let Some(action_id) = widget.default_action_id() else {
+            tracing::warn!("No default action for item: {}", item_id);
+            return;
+        };
+
+        let client = self.imp().client.borrow().clone();
+        let Some(client) = client else {
+            return;
+        };
+
+        // Get position hint (center of the widget)
+        let (x, y) = self.get_widget_position(widget);
+
+        glib::spawn_future_local(async move {
+            if let Err(e) = client.invoke_action(&item_id, &action_id, x, y).await {
+                tracing::error!("Failed to invoke action {} on {}: {}", action_id, item_id, e);
+            }
+        });
+    }
+
+    /// Show context menu for a module item
+    fn show_context_menu(&self, widget: &ModuleItemWidget) {
+        let Some(item_id) = widget.item_id() else {
+            return;
+        };
+
+        // Check if item has a context menu action
+        if !widget.has_context_menu() {
+            tracing::debug!("Item {} has no context menu", item_id);
             return;
         }
 
@@ -261,44 +294,23 @@ impl WayTrayWindow {
             return;
         };
 
-        // Get position hint (center of the row)
-        let (x, y) = self.get_row_position(row);
+        // Get position hint (center of the widget)
+        let (x, y) = self.get_widget_position(widget);
 
         glib::spawn_future_local(async move {
-            if let Err(e) = client.activate(&item_id, x, y).await {
-                tracing::error!("Failed to activate item {}: {}", item_id, e);
-            }
-        });
-    }
-
-    /// Show context menu for a tray item
-    fn show_context_menu(&self, row: &TrayItemRow) {
-        let Some(item_id) = row.item_id() else {
-            return;
-        };
-
-        let client = self.imp().client.borrow().clone();
-        let Some(client) = client else {
-            return;
-        };
-
-        // Get position hint (center of the row)
-        let (x, y) = self.get_row_position(row);
-
-        glib::spawn_future_local(async move {
-            if let Err(e) = client.context_menu(&item_id, x, y).await {
+            if let Err(e) = client.invoke_action(&item_id, "context_menu", x, y).await {
                 tracing::error!("Failed to show context menu for item {}: {}", item_id, e);
             }
         });
     }
 
-    /// Get the screen position of a row (for menu positioning hints)
-    fn get_row_position(&self, row: &TrayItemRow) -> (i32, i32) {
+    /// Get the screen position of a widget (for menu positioning hints)
+    fn get_widget_position(&self, widget: &ModuleItemWidget) -> (i32, i32) {
         // Try to get the position relative to the surface
-        if let Some(native) = row.native() {
+        if let Some(native) = widget.native() {
             if let Some(_surface) = native.surface() {
                 if let Some(point) =
-                    row.compute_point(&native, &gtk4::graphene::Point::new(0.0, 0.0))
+                    widget.compute_point(&native, &gtk4::graphene::Point::new(0.0, 0.0))
                 {
                     // This gives us position within the window
                     // For SNI items, they typically want screen coordinates
@@ -316,9 +328,9 @@ impl WayTrayWindow {
         imp.status_label.set_text(message);
         imp.status_label.set_visible(true);
 
-        // Clear the list
-        while let Some(child) = imp.list_box.first_child() {
-            imp.list_box.remove(&child);
+        // Clear the flow box
+        while let Some(child) = imp.flow_box.first_child() {
+            imp.flow_box.remove(&child);
         }
     }
 }

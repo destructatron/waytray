@@ -1,4 +1,4 @@
-//! Tray item widget for displaying a single system tray item
+//! Module item widget for displaying a single item from any module
 
 use glib::subclass::Signal;
 use gtk4::prelude::*;
@@ -7,38 +7,38 @@ use gtk4::{gdk, glib};
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
-use waytray_daemon::TrayItem;
+use waytray_daemon::ModuleItem;
 
 mod imp {
     use super::*;
-    use gtk4::subclass::list_box_row::ListBoxRowImpl;
+    use gtk4::subclass::flow_box_child::FlowBoxChildImpl;
     use gtk4::subclass::widget::WidgetImpl;
 
     #[derive(Default)]
-    pub struct TrayItemRow {
-        pub item_data: RefCell<Option<TrayItem>>,
+    pub struct ModuleItemWidget {
+        pub item_data: RefCell<Option<ModuleItem>>,
         pub icon: gtk4::Image,
         pub label: gtk4::Label,
         pub hbox: gtk4::Box,
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for TrayItemRow {
-        const NAME: &'static str = "WayTrayItemRow";
-        type Type = super::TrayItemRow;
-        type ParentType = gtk4::ListBoxRow;
+    impl ObjectSubclass for ModuleItemWidget {
+        const NAME: &'static str = "WayTrayModuleItem";
+        type Type = super::ModuleItemWidget;
+        type ParentType = gtk4::FlowBoxChild;
 
         fn new() -> Self {
             Self {
                 item_data: RefCell::new(None),
                 icon: gtk4::Image::new(),
                 label: gtk4::Label::new(None),
-                hbox: gtk4::Box::new(gtk4::Orientation::Horizontal, 12),
+                hbox: gtk4::Box::new(gtk4::Orientation::Horizontal, 8),
             }
         }
     }
 
-    impl ObjectImpl for TrayItemRow {
+    impl ObjectImpl for ModuleItemWidget {
         fn signals() -> &'static [Signal] {
             static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
             SIGNALS.get_or_init(|| {
@@ -59,13 +59,12 @@ mod imp {
 
             // Configure the label
             self.label.set_xalign(0.0);
-            self.label.set_hexpand(true);
 
-            // Build the layout
-            self.hbox.set_margin_start(12);
-            self.hbox.set_margin_end(12);
-            self.hbox.set_margin_top(8);
-            self.hbox.set_margin_bottom(8);
+            // Build the layout - more compact for horizontal flow
+            self.hbox.set_margin_start(8);
+            self.hbox.set_margin_end(8);
+            self.hbox.set_margin_top(6);
+            self.hbox.set_margin_bottom(6);
             self.hbox.append(&self.icon);
             self.hbox.append(&self.label);
 
@@ -92,34 +91,34 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for TrayItemRow {}
-    impl ListBoxRowImpl for TrayItemRow {}
+    impl WidgetImpl for ModuleItemWidget {}
+    impl FlowBoxChildImpl for ModuleItemWidget {}
 }
 
 glib::wrapper! {
-    pub struct TrayItemRow(ObjectSubclass<imp::TrayItemRow>)
-        @extends gtk4::ListBoxRow, gtk4::Widget,
-        @implements gtk4::Accessible, gtk4::Actionable, gtk4::Buildable, gtk4::ConstraintTarget;
+    pub struct ModuleItemWidget(ObjectSubclass<imp::ModuleItemWidget>)
+        @extends gtk4::FlowBoxChild, gtk4::Widget,
+        @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
 }
 
-impl TrayItemRow {
-    /// Create a new tray item row
+impl ModuleItemWidget {
+    /// Create a new module item widget
     pub fn new() -> Self {
         glib::Object::new()
     }
 
-    /// Set the tray item data
-    pub fn set_item(&self, item: TrayItem) {
+    /// Set the module item data
+    pub fn set_item(&self, item: ModuleItem) {
         let imp = self.imp();
 
         // Set the label
-        imp.label.set_text(&item.title);
+        imp.label.set_text(&item.label);
 
         // Set the icon
         self.update_icon(&item);
 
         // Set accessible properties
-        self.update_property(&[gtk4::accessible::Property::Label(&item.title)]);
+        self.update_property(&[gtk4::accessible::Property::Label(&item.label)]);
 
         if let Some(tooltip) = &item.tooltip {
             self.set_tooltip_text(Some(tooltip));
@@ -131,7 +130,7 @@ impl TrayItemRow {
     }
 
     /// Update the icon from item data
-    fn update_icon(&self, item: &TrayItem) {
+    fn update_icon(&self, item: &ModuleItem) {
         let imp = self.imp();
 
         // Prefer icon name (from theme)
@@ -213,20 +212,37 @@ impl TrayItemRow {
             .map(|item| item.id.clone())
     }
 
-    /// Check if this item is menu-only
-    pub fn is_menu_only(&self) -> bool {
+    /// Get the default action ID for this item
+    pub fn default_action_id(&self) -> Option<String> {
         self.imp()
             .item_data
             .borrow()
             .as_ref()
-            .map(|item| item.item_is_menu)
+            .and_then(|item| {
+                item.actions
+                    .iter()
+                    .find(|a| a.is_default)
+                    .or_else(|| item.actions.first())
+                    .map(|a| a.id.clone())
+            })
+    }
+
+    /// Check if this item has a context menu action
+    pub fn has_context_menu(&self) -> bool {
+        self.imp()
+            .item_data
+            .borrow()
+            .as_ref()
+            .map(|item| {
+                item.actions.iter().any(|a| a.id == "context_menu")
+            })
             .unwrap_or(false)
     }
 
     /// Handle key press events
     fn handle_key_press(&self, keyval: gdk::Key, state: gdk::ModifierType) -> glib::Propagation {
         match keyval {
-            // Enter or Space: Activate the item
+            // Enter or Space: Activate the item (default action)
             gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::space => {
                 self.emit_by_name::<()>("activate-item", &[]);
                 glib::Propagation::Stop
@@ -249,7 +265,7 @@ impl TrayItemRow {
     /// Connect to the activate-item signal
     pub fn connect_activate_item<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_local("activate-item", false, move |values| {
-            let obj = values[0].get::<TrayItemRow>().unwrap();
+            let obj = values[0].get::<ModuleItemWidget>().unwrap();
             f(&obj);
             None
         })
@@ -258,14 +274,14 @@ impl TrayItemRow {
     /// Connect to the context-menu-item signal
     pub fn connect_context_menu_item<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_local("context-menu-item", false, move |values| {
-            let obj = values[0].get::<TrayItemRow>().unwrap();
+            let obj = values[0].get::<ModuleItemWidget>().unwrap();
             f(&obj);
             None
         })
     }
 }
 
-impl Default for TrayItemRow {
+impl Default for ModuleItemWidget {
     fn default() -> Self {
         Self::new()
     }

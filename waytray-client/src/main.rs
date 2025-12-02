@@ -1,10 +1,11 @@
 //! WayTray Client
 //!
-//! GTK4 client for displaying system tray items in an accessible window.
+//! GTK4 client for displaying items from the WayTray daemon in an accessible window.
+//! Uses a horizontal FlowBox for left/right arrow navigation like KDE's system tray.
 
 mod app;
 mod daemon_proxy;
-mod tray_item;
+mod module_item;
 mod window;
 
 use gtk4::glib;

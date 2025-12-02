@@ -35,3 +35,11 @@ anyhow = { workspace = true }
 
 # Async utilities
 futures = "0.3"
+async-trait = "0.1"
+
+# Configuration
+toml = "0.8"
+dirs = "5"
+
+# Desktop notifications
+notify-rust = "4"
