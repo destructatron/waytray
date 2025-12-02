@@ -110,7 +110,7 @@ WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the
 [modules]
 # Module display order (left to right)
 # Modules not listed appear after these
-order = ["tray", "battery", "clock"]
+order = ["tray", "battery", "system", "clock"]
 
 [modules.tray]
 enabled = true
@@ -125,6 +125,12 @@ notify_full_charge = false  # Notify when fully charged
 enabled = true
 format = "%H:%M"                    # Time format (strftime)
 date_format = "%A, %B %d, %Y"       # Tooltip date format
+
+[modules.system]
+enabled = true
+show_cpu = true
+show_memory = true
+interval_seconds = 5
 
 [notifications]
 enabled = true
@@ -167,6 +173,17 @@ Displays the current time with configurable format.
 - `%I:%M %p` - 12-hour with AM/PM (2:30 PM)
 - `%H:%M:%S` - With seconds (14:30:45)
 
+#### System (`[modules.system]`)
+
+Displays CPU and memory usage. Reads from `/proc/stat` and `/proc/meminfo`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable/disable the system module |
+| `show_cpu` | bool | `true` | Show CPU usage percentage |
+| `show_memory` | bool | `true` | Show memory usage percentage |
+| `interval_seconds` | u64 | `5` | Update interval in seconds |
+
 ### Notifications (`[notifications]`)
 
 Global notification settings.
@@ -184,7 +201,8 @@ Global notification settings.
 │  ├─ Module system                                       │
 │  │   ├─ Tray module (SNI host for app tray items)       │
 │  │   ├─ Battery module (UPower D-Bus)                   │
-│  │   └─ Clock module (time display)                     │
+│  │   ├─ Clock module (time display)                     │
+│  │   └─ System module (CPU/memory from /proc)           │
 │  ├─ StatusNotifierWatcher (fallback if none exists)     │
 │  ├─ Notification service (desktop notifications)        │
 │  └─ org.waytray.Daemon interface for clients            │

@@ -13,6 +13,7 @@ use waytray_daemon::config::Config;
 use waytray_daemon::dbus_service;
 use waytray_daemon::modules::battery::BatteryModule;
 use waytray_daemon::modules::clock::ClockModule;
+use waytray_daemon::modules::system::SystemModule;
 use waytray_daemon::modules::tray::TrayModule;
 use waytray_daemon::modules::ModuleRegistry;
 use waytray_daemon::notifications::NotificationService;
@@ -81,19 +82,17 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // TODO: Add system module when implemented
-    // if let Some(ref system_config) = config.modules.system {
-    //     if system_config.enabled {
-    //         let system_module = SystemModule::new(system_config.clone());
-    //         registry.add_module(Arc::new(system_module));
-    //     }
-    // }
+    // Add the system module if enabled
+    if let Some(ref system_config) = config.modules.system {
+        if system_config.enabled {
+            let system_module = SystemModule::new(system_config.clone());
+            registry.add_module(Arc::new(system_module));
+            tracing::info!("System module enabled");
+        }
+    }
 
+    // TODO: Add weather module when implemented
     // TODO: Add script modules when implemented
-    // for script_config in &config.modules.scripts {
-    //     let script_module = ScriptModule::new(script_config.clone());
-    //     registry.add_module(Arc::new(script_module));
-    // }
 
     // Wrap registry in Arc for sharing
     let registry = Arc::new(registry);
