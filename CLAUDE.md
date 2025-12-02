@@ -35,22 +35,53 @@ WayTray is a compositor-agnostic Linux system tray with a daemon + client archit
 
 ### Daemon (`waytray-daemon`)
 
-The daemon implements the [StatusNotifierItem (SNI)](https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/) protocol:
+The daemon uses a modular architecture configured via TOML:
 
-- **watcher.rs**: Fallback StatusNotifierWatcher implementation. Checks if an external watcher exists (e.g., from KDE/GNOME); if not, provides its own.
-- **host.rs**: StatusNotifierHost that receives tray items via D-Bus. Subscribes to item signals (NewIcon, NewTitle, NewStatus, NewToolTip) for real-time updates.
-- **cache.rs**: Thread-safe item cache with broadcast channel for change notifications.
-- **dbus_service.rs**: Exposes `org.waytray.Daemon` interface for clients to query items and invoke actions (Activate, ContextMenu, etc.).
+#### Core Files
+- **main.rs**: Entry point, loads config, initializes modules and D-Bus services
+- **config.rs**: TOML configuration from `~/.config/waytray/config.toml` (auto-created with defaults)
+- **dbus_service.rs**: Exposes `org.waytray.Daemon` interface for clients
+- **notifications.rs**: Desktop notifications via freedesktop notification spec (notify-rust)
+- **watcher.rs**: Fallback StatusNotifierWatcher if none exists (e.g., from KDE/GNOME)
+- **host.rs**: StatusNotifierHost that receives tray items via D-Bus
 
-Shared types (`TrayItem`, `ItemStatus`, `ItemCategory`) are defined in `lib.rs` and used by both daemon and client.
+#### Module System (`modules/`)
+- **mod.rs**: `Module` trait, `ModuleRegistry`, `ModuleItem`, `ModuleContext`, event broadcasting
+- **tray.rs**: System tray items via StatusNotifierItem protocol
+- **battery.rs**: Battery status via UPower D-Bus, low/critical/full notifications
+- **clock.rs**: Time display with configurable strftime format
+- **system.rs**: CPU/memory usage from `/proc/stat` and `/proc/meminfo`
+- **weather.rs**: Weather via wttr.in API (no API key required)
+
+#### Module Trait
+```rust
+#[async_trait]
+pub trait Module: Send + Sync {
+    fn name(&self) -> &str;
+    fn enabled(&self) -> bool;
+    async fn start(&self, ctx: Arc<ModuleContext>);
+    async fn stop(&self);
+    async fn invoke_action(&self, item_id: &str, action_id: &str, x: i32, y: i32);
+}
+```
+
+Modules emit `ModuleEvent::ItemsUpdated` via `ModuleContext` to update the registry.
 
 ### Client (`waytray-client`)
 
-GTK4 application providing an accessible tray window:
+GTK4 application providing an accessible panel window:
 
-- **daemon_proxy.rs**: zbus proxy for `org.waytray.Daemon` interface.
-- **tray_item.rs**: GObject subclass of `ListBoxRow` with keyboard handling (Enter→Activate, Shift+F10/Menu→ContextMenu).
-- **window.rs**: Main window with ListBox, handles D-Bus communication and item refresh.
+- **main.rs**: Entry point, creates application and window
+- **daemon_client.rs**: D-Bus client for `org.waytray.Daemon` interface
+- **module_item.rs**: `ModuleItemWidget` - GObject Box subclass with keyboard handling (Enter→Activate, Shift+F10/Menu→ContextMenu)
+- **window.rs**: Main window with horizontal `gtk4::Box`, left/right arrow navigation, incremental updates to preserve accessibility state
+
+#### Accessibility
+- Horizontal Box layout (FlowBox caused Orca screen reader issues)
+- Left/Right arrows navigate between items (with wrapping)
+- Enter/Space activates, Shift+F10/Menu opens context menu
+- Incremental updates avoid re-announcing unchanged items to screen readers
+- Items use `gtk4::AccessibleRole::Button` with proper labels
 
 ### D-Bus Interfaces
 
@@ -68,4 +99,43 @@ GTK4 application providing an accessible tray window:
 
 **Icon handling**: Prefer `icon_name` (theme lookup) over `icon_pixmap` (ARGB32 binary data requiring conversion to RGBA for GTK).
 
-**Accessibility**: Items use `gtk4::AccessibleRole::Button` with proper labels for screen reader support.
+**Weather API**: Uses wttr.in with `curl` user agent (wttr.in blocks non-curl user agents). JSON endpoint includes both Celsius and Fahrenheit.
+
+## Configuration
+
+Config file: `~/.config/waytray/config.toml` (created automatically with defaults)
+
+```toml
+[modules]
+order = ["tray", "battery", "system", "weather", "clock"]
+
+[modules.tray]
+enabled = true
+
+[modules.battery]
+enabled = true
+low_threshold = 20
+critical_threshold = 10
+notify_full_charge = false
+
+[modules.clock]
+enabled = true
+format = "%H:%M"
+date_format = "%A, %B %d, %Y"
+
+[modules.system]
+enabled = true
+show_cpu = true
+show_memory = true
+interval_seconds = 5
+
+[modules.weather]
+enabled = true
+location = ""           # Empty = auto-detect from IP
+units = "celsius"       # or "fahrenheit"
+interval_seconds = 1800
+
+[notifications]
+enabled = true
+timeout_ms = 5000
+```
