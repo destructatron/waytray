@@ -15,6 +15,7 @@ use waytray_daemon::modules::battery::BatteryModule;
 use waytray_daemon::modules::clock::ClockModule;
 use waytray_daemon::modules::tray::TrayModule;
 use waytray_daemon::modules::ModuleRegistry;
+use waytray_daemon::notifications::NotificationService;
 use waytray_daemon::watcher::{self, WatcherState};
 
 #[tokio::main]
@@ -42,9 +43,15 @@ async fn main() -> anyhow::Result<()> {
     // Start our watcher if no external one exists
     let _owns_watcher = watcher::start_watcher(&connection, watcher_state.clone()).await?;
 
+    // Create notification service
+    let notification_service = NotificationService::new(
+        config.notifications.enabled,
+        config.notifications.timeout_ms,
+    );
+
     // Create the module registry with configured order
     let module_order = config.module_order();
-    let mut registry = ModuleRegistry::new(module_order);
+    let mut registry = ModuleRegistry::new(module_order, notification_service);
 
     // Add the tray module if enabled
     if config.modules.tray.enabled {

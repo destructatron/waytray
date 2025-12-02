@@ -161,22 +161,26 @@ pub trait Module: Send + Sync {
     async fn invoke_action(&self, item_id: &str, action_id: &str, x: i32, y: i32);
 }
 
+use crate::notifications::NotificationService;
+
 /// Registry that manages all modules and their items
 pub struct ModuleRegistry {
     modules: Vec<Arc<dyn Module>>,
     module_order: Vec<String>,
     items: Arc<RwLock<HashMap<String, Vec<ModuleItem>>>>,
     event_sender: broadcast::Sender<ModuleEvent>,
+    notification_service: Arc<NotificationService>,
 }
 
 impl ModuleRegistry {
-    pub fn new(module_order: Vec<String>) -> Self {
+    pub fn new(module_order: Vec<String>, notification_service: NotificationService) -> Self {
         let (sender, _) = broadcast::channel(64);
         Self {
             modules: Vec::new(),
             module_order,
             items: Arc::new(RwLock::new(HashMap::new())),
             event_sender: sender,
+            notification_service: Arc::new(notification_service),
         }
     }
 
@@ -203,6 +207,7 @@ impl ModuleRegistry {
 
         // Listen for module events and update items
         let items = self.items.clone();
+        let notification_service = self.notification_service.clone();
         let mut receiver = self.event_sender.subscribe();
 
         tokio::spawn(async move {
@@ -214,13 +219,13 @@ impl ModuleRegistry {
                         tracing::debug!("Updated items for module: {}", module_name);
                     }
                     ModuleEvent::Notification { title, body, urgency } => {
-                        // Notifications are handled elsewhere
                         tracing::debug!(
-                            "Notification: {} - {} ({:?})",
+                            "Sending notification: {} - {} ({:?})",
                             title,
                             body,
                             urgency
                         );
+                        notification_service.send(&title, &body, urgency);
                     }
                 }
             }
