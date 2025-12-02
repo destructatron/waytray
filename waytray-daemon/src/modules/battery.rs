@@ -110,6 +110,7 @@ pub struct BatteryModule {
     connection: RwLock<Option<Connection>>,
     last_low_notification: RwLock<bool>,
     last_critical_notification: RwLock<bool>,
+    last_full_notification: RwLock<bool>,
 }
 
 impl BatteryModule {
@@ -119,6 +120,7 @@ impl BatteryModule {
             connection: RwLock::new(None),
             last_low_notification: RwLock::new(false),
             last_critical_notification: RwLock::new(false),
+            last_full_notification: RwLock::new(false),
         }
     }
 
@@ -210,9 +212,25 @@ impl BatteryModule {
     }
 
     async fn check_and_send_notifications(&self, ctx: &ModuleContext, percentage: u8, state: BatteryState) {
-        // Only send notifications when discharging
+        // Check for fully charged notification
+        if state == BatteryState::FullyCharged && self.config.notify_full_charge {
+            let already_notified = *self.last_full_notification.read().await;
+            if !already_notified {
+                ctx.send_notification(
+                    "Battery Fully Charged",
+                    "Battery is fully charged. You can unplug the charger.",
+                    Urgency::Low,
+                );
+                *self.last_full_notification.write().await = true;
+            }
+        } else if state != BatteryState::FullyCharged {
+            // Reset full notification flag when no longer fully charged
+            *self.last_full_notification.write().await = false;
+        }
+
+        // Only send low/critical notifications when discharging
         if state != BatteryState::Discharging {
-            // Reset notification flags when charging
+            // Reset low/critical notification flags when not discharging
             *self.last_low_notification.write().await = false;
             *self.last_critical_notification.write().await = false;
             return;

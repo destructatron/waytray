@@ -69,6 +69,8 @@ pub struct BatteryModuleConfig {
     pub low_threshold: u8,
     /// Battery percentage threshold for critical battery notification
     pub critical_threshold: u8,
+    /// Whether to notify when battery is fully charged
+    pub notify_full_charge: bool,
 }
 
 impl Default for BatteryModuleConfig {
@@ -77,6 +79,7 @@ impl Default for BatteryModuleConfig {
             enabled: true,
             low_threshold: 20,
             critical_threshold: 10,
+            notify_full_charge: false,
         }
     }
 }
