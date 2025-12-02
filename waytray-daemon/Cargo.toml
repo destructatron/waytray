@@ -43,3 +43,6 @@ dirs = "5"
 
 # Desktop notifications
 notify-rust = "4"
+
+# Date/time
+chrono = "0.4"

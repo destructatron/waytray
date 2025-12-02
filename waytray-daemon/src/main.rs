@@ -12,6 +12,7 @@ use zbus::connection::Connection;
 use waytray_daemon::config::Config;
 use waytray_daemon::dbus_service;
 use waytray_daemon::modules::battery::BatteryModule;
+use waytray_daemon::modules::clock::ClockModule;
 use waytray_daemon::modules::tray::TrayModule;
 use waytray_daemon::modules::ModuleRegistry;
 use waytray_daemon::watcher::{self, WatcherState};
@@ -61,6 +62,15 @@ async fn main() -> anyhow::Result<()> {
             let battery_module = BatteryModule::new(battery_config.clone());
             registry.add_module(Arc::new(battery_module));
             tracing::info!("Battery module enabled");
+        }
+    }
+
+    // Add the clock module if enabled
+    if let Some(ref clock_config) = config.modules.clock {
+        if clock_config.enabled {
+            let clock_module = ClockModule::new(clock_config.clone());
+            registry.add_module(Arc::new(clock_module));
+            tracing::info!("Clock module enabled");
         }
     }
 

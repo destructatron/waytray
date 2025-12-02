@@ -28,6 +28,7 @@ pub struct ModulesConfig {
     pub order: Vec<String>,
     pub tray: TrayModuleConfig,
     pub battery: Option<BatteryModuleConfig>,
+    pub clock: Option<ClockModuleConfig>,
     pub system: Option<SystemModuleConfig>,
     pub weather: Option<WeatherModuleConfig>,
     #[serde(default)]
@@ -40,6 +41,7 @@ impl Default for ModulesConfig {
             order: vec!["tray".to_string()],
             tray: TrayModuleConfig::default(),
             battery: None,
+            clock: None,
             system: None,
             weather: None,
             scripts: Vec::new(),
@@ -75,6 +77,29 @@ impl Default for BatteryModuleConfig {
             enabled: true,
             low_threshold: 20,
             critical_threshold: 10,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ClockModuleConfig {
+    pub enabled: bool,
+    /// Time format string (strftime format)
+    /// Default: "%H:%M" (24-hour time)
+    /// Examples: "%I:%M %p" (12-hour with AM/PM), "%H:%M:%S" (with seconds)
+    pub format: String,
+    /// Date format for tooltip (strftime format)
+    /// Default: "%A, %B %d, %Y" (e.g., "Monday, January 15, 2024")
+    pub date_format: String,
+}
+
+impl Default for ClockModuleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            format: "%H:%M".to_string(),
+            date_format: "%A, %B %d, %Y".to_string(),
         }
     }
 }
@@ -201,6 +226,11 @@ impl Config {
         if let Some(ref battery) = self.modules.battery {
             if battery.enabled && !order.contains(&"battery".to_string()) {
                 order.push("battery".to_string());
+            }
+        }
+        if let Some(ref clock) = self.modules.clock {
+            if clock.enabled && !order.contains(&"clock".to_string()) {
+                order.push("clock".to_string());
             }
         }
         if let Some(ref system) = self.modules.system {
