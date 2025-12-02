@@ -23,10 +23,10 @@ cargo test
 
 ## System Dependencies
 
-Requires GTK4 development libraries:
+Requires GTK4 and GStreamer development libraries:
 ```bash
 # Debian/Ubuntu
-sudo apt install libgtk-4-dev
+sudo apt install libgtk-4-dev libgstreamer1.0-dev
 ```
 
 ## Architecture
@@ -49,7 +49,7 @@ The daemon uses a modular architecture configured via TOML:
 #### Module System (`modules/`)
 - **mod.rs**: `Module` trait, `ModuleRegistry`, `ModuleItem`, `ModuleContext`, event broadcasting
 - **tray.rs**: System tray items via StatusNotifierItem protocol
-- **battery.rs**: Battery status via UPower D-Bus, low/critical/full notifications
+- **battery.rs**: Battery status via UPower D-Bus, notifications with optional GStreamer sounds
 - **clock.rs**: Time display with configurable strftime format
 - **system.rs**: CPU/memory/temperature from `/proc/stat`, `/proc/meminfo`, `/sys/class/thermal`
 - **network.rs**: Network status and speeds from `/sys/class/net` and `/proc/net/route`
@@ -121,6 +121,9 @@ enabled = true
 low_threshold = 20
 critical_threshold = 10
 notify_full_charge = false
+# low_sound = "~/.config/waytray/sounds/low.wav"
+# critical_sound = "~/.config/waytray/sounds/critical.wav"
+# full_sound = "~/.config/waytray/sounds/full.wav"
 
 [modules.clock]
 enabled = true

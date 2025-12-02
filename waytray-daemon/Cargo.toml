@@ -53,3 +53,6 @@ urlencoding = "2"
 
 # File watching for config hot reload
 notify = "8"
+
+# Audio playback for notifications
+gstreamer = "0.23"

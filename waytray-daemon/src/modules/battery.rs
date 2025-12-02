@@ -1,14 +1,21 @@
 //! Battery module - displays battery status using UPower D-Bus interface
 
+use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use async_trait::async_trait;
+use gstreamer as gst;
+use gstreamer::prelude::*;
 use tokio::sync::RwLock;
 use zbus::Connection;
 use zbus::proxy;
 
 use crate::config::BatteryModuleConfig;
 use super::{Module, ModuleContext, ModuleItem, Urgency};
+
+/// Global flag to track if GStreamer has been initialized
+static GST_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// UPower device states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +109,92 @@ trait UPowerDevice {
 
     #[zbus(property, name = "Type")]
     fn device_type(&self) -> zbus::Result<u32>;
+}
+
+/// Initialize GStreamer if not already done
+fn ensure_gst_init() {
+    if !GST_INITIALIZED.swap(true, Ordering::SeqCst) {
+        if let Err(e) = gst::init() {
+            tracing::error!("Failed to initialize GStreamer: {}", e);
+            GST_INITIALIZED.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
+/// Play a sound file using GStreamer (fire and forget)
+fn play_sound(path: &str) {
+    ensure_gst_init();
+
+    // Expand ~ to home directory
+    let expanded_path = if path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            home.join(&path[2..]).to_string_lossy().to_string()
+        } else {
+            path.to_string()
+        }
+    } else {
+        path.to_string()
+    };
+
+    // Verify file exists
+    if !Path::new(&expanded_path).exists() {
+        tracing::warn!("Sound file not found: {}", expanded_path);
+        return;
+    }
+
+    // Create playbin element
+    let uri = format!("file://{}", expanded_path);
+    let playbin = match gst::ElementFactory::make("playbin")
+        .property("uri", &uri)
+        .build()
+    {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("Failed to create playbin: {}", e);
+            return;
+        }
+    };
+
+    // Start playback
+    if let Err(e) = playbin.set_state(gst::State::Playing) {
+        tracing::error!("Failed to start sound playback: {}", e);
+        return;
+    }
+
+    // Spawn a task to wait for playback to finish and clean up
+    let playbin_weak = playbin.downgrade();
+    std::thread::spawn(move || {
+        let Some(playbin) = playbin_weak.upgrade() else {
+            return;
+        };
+
+        // Get the bus and wait for EOS or error
+        let bus = match playbin.bus() {
+            Some(b) => b,
+            None => {
+                let _ = playbin.set_state(gst::State::Null);
+                return;
+            }
+        };
+
+        for msg in bus.iter_timed(gst::ClockTime::from_seconds(30)) {
+            match msg.view() {
+                gst::MessageView::Eos(_) => break,
+                gst::MessageView::Error(err) => {
+                    tracing::error!(
+                        "Sound playback error: {} ({:?})",
+                        err.error(),
+                        err.debug()
+                    );
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        // Clean up
+        let _ = playbin.set_state(gst::State::Null);
+    });
 }
 
 /// Battery module that displays battery status
@@ -223,6 +316,10 @@ impl BatteryModule {
                     "Battery is fully charged. You can unplug the charger.",
                     Urgency::Low,
                 );
+                // Play sound if configured
+                if let Some(ref sound_path) = config.full_sound {
+                    play_sound(sound_path);
+                }
                 *self.last_full_notification.write().await = true;
             }
         } else if state != BatteryState::FullyCharged {
@@ -247,6 +344,10 @@ impl BatteryModule {
                     &format!("Battery is at {}%. Connect charger immediately.", percentage),
                     Urgency::Critical,
                 );
+                // Play sound if configured
+                if let Some(ref sound_path) = config.critical_sound {
+                    play_sound(sound_path);
+                }
                 *self.last_critical_notification.write().await = true;
             }
         }
@@ -259,6 +360,10 @@ impl BatteryModule {
                     &format!("Battery is at {}%. Consider connecting charger.", percentage),
                     Urgency::Normal,
                 );
+                // Play sound if configured
+                if let Some(ref sound_path) = config.low_sound {
+                    play_sound(sound_path);
+                }
                 *self.last_low_notification.write().await = true;
             }
         }

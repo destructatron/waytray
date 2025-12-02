@@ -73,6 +73,12 @@ pub struct BatteryModuleConfig {
     pub critical_threshold: u8,
     /// Whether to notify when battery is fully charged
     pub notify_full_charge: bool,
+    /// Sound file path to play on low battery (optional)
+    pub low_sound: Option<String>,
+    /// Sound file path to play on critical battery (optional)
+    pub critical_sound: Option<String>,
+    /// Sound file path to play when fully charged (optional)
+    pub full_sound: Option<String>,
 }
 
 impl Default for BatteryModuleConfig {
@@ -82,6 +88,9 @@ impl Default for BatteryModuleConfig {
             low_threshold: 20,
             critical_threshold: 10,
             notify_full_charge: false,
+            low_sound: None,
+            critical_sound: None,
+            full_sound: None,
         }
     }
 }
@@ -275,6 +284,9 @@ enabled = true
 # low_threshold = 20
 # critical_threshold = 10
 # notify_full_charge = false
+# low_sound = "~/.config/waytray/sounds/low.wav"
+# critical_sound = "~/.config/waytray/sounds/critical.wav"
+# full_sound = "~/.config/waytray/sounds/full.wav"
 
 # Uncomment to enable clock module
 # [modules.clock]

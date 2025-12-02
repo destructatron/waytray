@@ -24,17 +24,17 @@ WayTray implements the [StatusNotifierItem (SNI)](https://www.freedesktop.org/wi
 
 **Debian/Ubuntu:**
 ```bash
-sudo apt install build-essential pkg-config libgtk-4-dev
+sudo apt install build-essential pkg-config libgtk-4-dev libgstreamer1.0-dev
 ```
 
 **Fedora:**
 ```bash
-sudo dnf install gcc pkg-config gtk4-devel
+sudo dnf install gcc pkg-config gtk4-devel gstreamer1-devel
 ```
 
 **Arch:**
 ```bash
-sudo pacman -S base-devel gtk4
+sudo pacman -S base-devel gtk4 gstreamer
 ```
 
 ### Runtime Dependencies
@@ -165,7 +165,7 @@ Displays system tray items from applications (Discord, Spotify, nm-applet, etc.)
 
 #### Battery (`[modules.battery]`)
 
-Displays battery status and sends notifications for low/critical/full states. Uses UPower via D-Bus.
+Displays battery status and sends notifications for low/critical/full states. Uses UPower via D-Bus. Optionally plays sounds using GStreamer.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -173,6 +173,11 @@ Displays battery status and sends notifications for low/critical/full states. Us
 | `low_threshold` | u8 | `20` | Battery percentage for low warning |
 | `critical_threshold` | u8 | `10` | Battery percentage for critical warning |
 | `notify_full_charge` | bool | `false` | Send notification when fully charged |
+| `low_sound` | string | `null` | Sound file to play on low battery (optional) |
+| `critical_sound` | string | `null` | Sound file to play on critical battery (optional) |
+| `full_sound` | string | `null` | Sound file to play when fully charged (optional) |
+
+**Sound files:** Paths can use `~` for home directory. Supports any format GStreamer can play (WAV, OGG, MP3, etc.).
 
 #### Clock (`[modules.clock]`)
 
