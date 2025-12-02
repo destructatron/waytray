@@ -113,6 +113,7 @@ pub struct SystemModuleConfig {
     pub enabled: bool,
     pub show_cpu: bool,
     pub show_memory: bool,
+    pub show_temperature: bool,
     /// Update interval in seconds
     pub interval_seconds: u64,
 }
@@ -123,6 +124,7 @@ impl Default for SystemModuleConfig {
             enabled: true,
             show_cpu: true,
             show_memory: true,
+            show_temperature: false,
             interval_seconds: 5,
         }
     }
@@ -252,11 +254,12 @@ enabled = true
 # format = "%H:%M"
 # date_format = "%A, %B %d, %Y"
 
-# Uncomment to enable system (CPU/memory) module
+# Uncomment to enable system (CPU/memory/temperature) module
 # [modules.system]
 # enabled = true
 # show_cpu = true
 # show_memory = true
+# show_temperature = false
 # interval_seconds = 5
 
 # Uncomment to enable weather module (uses wttr.in, no API key needed)

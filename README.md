@@ -132,6 +132,7 @@ date_format = "%A, %B %d, %Y"       # Tooltip date format
 enabled = true
 show_cpu = true
 show_memory = true
+show_temperature = false
 interval_seconds = 5
 
 [modules.weather]
@@ -183,13 +184,14 @@ Displays the current time with configurable format.
 
 #### System (`[modules.system]`)
 
-Displays CPU and memory usage. Reads from `/proc/stat` and `/proc/meminfo`.
+Displays CPU usage, memory usage, and CPU temperature. Reads from `/proc/stat`, `/proc/meminfo`, and `/sys/class/thermal`.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `enabled` | bool | `true` | Enable/disable the system module |
 | `show_cpu` | bool | `true` | Show CPU usage percentage |
 | `show_memory` | bool | `true` | Show memory usage percentage |
+| `show_temperature` | bool | `false` | Show CPU temperature |
 | `interval_seconds` | u64 | `5` | Update interval in seconds |
 
 #### Weather (`[modules.weather]`)

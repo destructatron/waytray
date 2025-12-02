@@ -107,6 +107,43 @@ impl SystemModule {
         Some((percent, used_gb, total_gb))
     }
 
+    /// Read CPU temperature from thermal zones
+    /// Returns temperature in Celsius
+    async fn get_temperature(&self) -> Option<f32> {
+        // Try thermal_zone0 first (most common for CPU)
+        if let Ok(content) = tokio::fs::read_to_string("/sys/class/thermal/thermal_zone0/temp").await {
+            if let Ok(millidegrees) = content.trim().parse::<i32>() {
+                return Some(millidegrees as f32 / 1000.0);
+            }
+        }
+
+        // Fallback: try to find a thermal zone with "cpu" or "x86_pkg" in its type
+        if let Ok(mut entries) = tokio::fs::read_dir("/sys/class/thermal").await {
+            while let Ok(Some(entry)) = entries.next_entry().await {
+                let path = entry.path();
+                if let Some(name) = path.file_name() {
+                    if name.to_string_lossy().starts_with("thermal_zone") {
+                        // Check the type
+                        let type_path = path.join("type");
+                        if let Ok(zone_type) = tokio::fs::read_to_string(&type_path).await {
+                            let zone_type = zone_type.trim().to_lowercase();
+                            if zone_type.contains("cpu") || zone_type.contains("x86_pkg") || zone_type.contains("core") {
+                                let temp_path = path.join("temp");
+                                if let Ok(content) = tokio::fs::read_to_string(&temp_path).await {
+                                    if let Ok(millidegrees) = content.trim().parse::<i32>() {
+                                        return Some(millidegrees as f32 / 1000.0);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     fn create_cpu_item(&self, usage: u8) -> ModuleItem {
         // Use generic system monitor icon (cpu-specific icons often not available)
         let icon_name = "utilities-system-monitor";
@@ -141,6 +178,27 @@ impl SystemModule {
         }
     }
 
+    fn create_temperature_item(&self, temp: f32) -> ModuleItem {
+        // Choose icon based on temperature
+        let icon_name = if temp >= 80.0 {
+            "dialog-warning" // Hot!
+        } else {
+            "sensors-temperature"
+        };
+
+        ModuleItem {
+            id: "system:temperature".to_string(),
+            module: "system".to_string(),
+            label: format!("{:.0}°C", temp),
+            icon_name: Some(icon_name.to_string()),
+            icon_pixmap: None,
+            icon_width: 0,
+            icon_height: 0,
+            tooltip: Some(format!("CPU Temperature: {:.1}°C", temp)),
+            actions: Vec::new(),
+        }
+    }
+
     async fn create_items(&self) -> Vec<ModuleItem> {
         let config = self.config.read().await;
         let mut items = Vec::new();
@@ -154,6 +212,12 @@ impl SystemModule {
         if config.show_memory {
             if let Some((percent, used_gb, total_gb)) = self.get_memory_usage().await {
                 items.push(self.create_memory_item(percent, used_gb, total_gb));
+            }
+        }
+
+        if config.show_temperature {
+            if let Some(temp) = self.get_temperature().await {
+                items.push(self.create_temperature_item(temp));
             }
         }
 
