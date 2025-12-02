@@ -203,21 +203,23 @@ impl SystemModule {
         let config = self.config.read().await;
         let mut items = Vec::new();
 
+        // CPU usage and temperature together
         if config.show_cpu {
             if let Some(usage) = self.get_cpu_usage().await {
                 items.push(self.create_cpu_item(usage));
             }
         }
 
-        if config.show_memory {
-            if let Some((percent, used_gb, total_gb)) = self.get_memory_usage().await {
-                items.push(self.create_memory_item(percent, used_gb, total_gb));
-            }
-        }
-
         if config.show_temperature {
             if let Some(temp) = self.get_temperature().await {
                 items.push(self.create_temperature_item(temp));
+            }
+        }
+
+        // Memory last
+        if config.show_memory {
+            if let Some((percent, used_gb, total_gb)) = self.get_memory_usage().await {
+                items.push(self.create_memory_item(percent, used_gb, total_gb));
             }
         }
 
