@@ -132,9 +132,8 @@ impl Default for SystemModuleConfig {
 #[serde(default)]
 pub struct WeatherModuleConfig {
     pub enabled: bool,
-    /// OpenWeatherMap API key
-    pub api_key: String,
-    /// Location for weather (city name or coordinates)
+    /// Location for weather (city name, e.g. "London" or "New York")
+    /// Leave empty to auto-detect from IP
     pub location: String,
     /// Update interval in seconds
     pub interval_seconds: u64,
@@ -145,10 +144,9 @@ pub struct WeatherModuleConfig {
 impl Default for WeatherModuleConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
-            api_key: String::new(),
-            location: String::new(),
-            interval_seconds: 900, // 15 minutes
+            enabled: true,
+            location: String::new(), // Empty = auto-detect
+            interval_seconds: 1800,  // 30 minutes
             units: "celsius".to_string(),
         }
     }
@@ -260,6 +258,13 @@ enabled = true
 # show_cpu = true
 # show_memory = true
 # interval_seconds = 5
+
+# Uncomment to enable weather module (uses wttr.in, no API key needed)
+# [modules.weather]
+# enabled = true
+# location = ""           # Empty = auto-detect from IP
+# units = "celsius"       # or "fahrenheit"
+# interval_seconds = 1800 # 30 minutes
 
 [notifications]
 enabled = true

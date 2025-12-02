@@ -110,7 +110,7 @@ WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the
 [modules]
 # Module display order (left to right)
 # Modules not listed appear after these
-order = ["tray", "battery", "system", "clock"]
+order = ["tray", "battery", "system", "weather", "clock"]
 
 [modules.tray]
 enabled = true
@@ -131,6 +131,12 @@ enabled = true
 show_cpu = true
 show_memory = true
 interval_seconds = 5
+
+[modules.weather]
+enabled = true
+location = ""                 # Empty = auto-detect from IP
+units = "celsius"             # or "fahrenheit"
+interval_seconds = 1800       # 30 minutes
 
 [notifications]
 enabled = true
@@ -184,6 +190,22 @@ Displays CPU and memory usage. Reads from `/proc/stat` and `/proc/meminfo`.
 | `show_memory` | bool | `true` | Show memory usage percentage |
 | `interval_seconds` | u64 | `5` | Update interval in seconds |
 
+#### Weather (`[modules.weather]`)
+
+Displays current weather conditions using [wttr.in](https://wttr.in) (no API key required). Shows temperature as the label with detailed conditions in the tooltip.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable/disable the weather module |
+| `location` | string | `""` | City name (e.g., "London", "New York"). Empty = auto-detect from IP |
+| `units` | string | `"celsius"` | Temperature units: "celsius" or "fahrenheit" |
+| `interval_seconds` | u64 | `1800` | Update interval (default 30 minutes) |
+
+**Display:**
+- Label: Temperature (e.g., "15°C")
+- Tooltip: Conditions, feels like, humidity, location
+- Icon: Weather-appropriate theme icon
+
 ### Notifications (`[notifications]`)
 
 Global notification settings.
@@ -202,7 +224,8 @@ Global notification settings.
 │  │   ├─ Tray module (SNI host for app tray items)       │
 │  │   ├─ Battery module (UPower D-Bus)                   │
 │  │   ├─ Clock module (time display)                     │
-│  │   └─ System module (CPU/memory from /proc)           │
+│  │   ├─ System module (CPU/memory from /proc)           │
+│  │   └─ Weather module (wttr.in API)                    │
 │  ├─ StatusNotifierWatcher (fallback if none exists)     │
 │  ├─ Notification service (desktop notifications)        │
 │  └─ org.waytray.Daemon interface for clients            │

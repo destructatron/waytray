@@ -2,6 +2,7 @@ pub mod battery;
 pub mod clock;
 pub mod system;
 pub mod tray;
+pub mod weather;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

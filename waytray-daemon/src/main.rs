@@ -15,6 +15,7 @@ use waytray_daemon::modules::battery::BatteryModule;
 use waytray_daemon::modules::clock::ClockModule;
 use waytray_daemon::modules::system::SystemModule;
 use waytray_daemon::modules::tray::TrayModule;
+use waytray_daemon::modules::weather::WeatherModule;
 use waytray_daemon::modules::ModuleRegistry;
 use waytray_daemon::notifications::NotificationService;
 use waytray_daemon::watcher::{self, WatcherState};
@@ -91,7 +92,15 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // TODO: Add weather module when implemented
+    // Add the weather module if enabled
+    if let Some(ref weather_config) = config.modules.weather {
+        if weather_config.enabled {
+            let weather_module = WeatherModule::new(weather_config.clone());
+            registry.add_module(Arc::new(weather_module));
+            tracing::info!("Weather module enabled");
+        }
+    }
+
     // TODO: Add script modules when implemented
 
     // Wrap registry in Arc for sharing
