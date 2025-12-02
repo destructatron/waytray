@@ -174,7 +174,7 @@ use crate::notifications::NotificationService;
 /// Registry that manages all modules and their items
 pub struct ModuleRegistry {
     modules: Vec<Arc<dyn Module>>,
-    module_order: Vec<String>,
+    module_order: RwLock<Vec<String>>,
     items: Arc<RwLock<HashMap<String, Vec<ModuleItem>>>>,
     event_sender: broadcast::Sender<ModuleEvent>,
     notification_service: Arc<NotificationService>,
@@ -185,7 +185,7 @@ impl ModuleRegistry {
         let (sender, _) = broadcast::channel(64);
         Self {
             modules: Vec::new(),
-            module_order,
+            module_order: RwLock::new(module_order),
             items: Arc::new(RwLock::new(HashMap::new())),
             event_sender: sender,
             notification_service: Arc::new(notification_service),
@@ -243,10 +243,11 @@ impl ModuleRegistry {
     /// Get all items from all modules, ordered by module_order
     pub async fn get_all_items(&self) -> Vec<ModuleItem> {
         let items_lock = self.items.read().await;
+        let order_lock = self.module_order.read().await;
         let mut all_items = Vec::new();
 
         // Add items in order
-        for module_name in &self.module_order {
+        for module_name in order_lock.iter() {
             if let Some(module_items) = items_lock.get(module_name) {
                 all_items.extend(module_items.clone());
             }
@@ -254,7 +255,7 @@ impl ModuleRegistry {
 
         // Add items from modules not in the order list
         for (module_name, module_items) in items_lock.iter() {
-            if !self.module_order.contains(module_name) {
+            if !order_lock.contains(module_name) {
                 all_items.extend(module_items.clone());
             }
         }
@@ -310,6 +311,15 @@ impl ModuleRegistry {
 
     /// Reload configuration for all modules
     pub async fn reload_config(&self, config: &crate::config::Config) {
+        // Update module order
+        let new_order = config.module_order();
+        {
+            let mut order_lock = self.module_order.write().await;
+            *order_lock = new_order;
+            tracing::info!("Updated module order");
+        }
+
+        // Reload each module's config
         for module in &self.modules {
             let name = module.name();
             if module.reload_config(config).await {
