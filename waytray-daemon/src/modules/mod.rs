@@ -114,6 +114,8 @@ pub enum ModuleEvent {
         body: String,
         urgency: Urgency,
     },
+    /// Config has been reloaded, clients should refresh
+    ConfigReloaded,
 }
 
 /// Context provided to modules for communication
@@ -235,6 +237,9 @@ impl ModuleRegistry {
                         );
                         notification_service.send(&title, &body, urgency);
                     }
+                    ModuleEvent::ConfigReloaded => {
+                        // Handled by D-Bus service, nothing to do here
+                    }
                 }
             }
         });
@@ -326,6 +331,9 @@ impl ModuleRegistry {
                 tracing::info!("Reloaded config for module: {}", name);
             }
         }
+
+        // Notify clients that config was reloaded so they refresh
+        let _ = self.event_sender.send(ModuleEvent::ConfigReloaded);
     }
 }
 

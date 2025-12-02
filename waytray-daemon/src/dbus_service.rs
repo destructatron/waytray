@@ -517,25 +517,43 @@ pub async fn start_service_with_registry(
 
     tokio::spawn(async move {
         while let Ok(event) = rx.recv().await {
-            if let ModuleEvent::ItemsUpdated { module_name, .. } = event {
-                // Emit the module-specific signal
-                if let Ok(iface_ref) = connection_clone
-                    .object_server()
-                    .interface::<_, DaemonService>(crate::dbus::DAEMON_OBJECT_PATH)
-                    .await
-                {
-                    if let Err(e) = DaemonService::module_items_changed(
-                        iface_ref.signal_emitter(),
-                        &module_name,
-                    )
-                    .await
+            match event {
+                ModuleEvent::ItemsUpdated { module_name, .. } => {
+                    // Emit the module-specific signal
+                    if let Ok(iface_ref) = connection_clone
+                        .object_server()
+                        .interface::<_, DaemonService>(crate::dbus::DAEMON_OBJECT_PATH)
+                        .await
                     {
-                        tracing::warn!("Failed to emit ModuleItemsChanged signal: {}", e);
+                        if let Err(e) = DaemonService::module_items_changed(
+                            iface_ref.signal_emitter(),
+                            &module_name,
+                        )
+                        .await
+                        {
+                            tracing::warn!("Failed to emit ModuleItemsChanged signal: {}", e);
+                        }
+                        // Also emit the legacy signal for backwards compatibility
+                        if let Err(e) = DaemonService::items_changed(iface_ref.signal_emitter()).await {
+                            tracing::warn!("Failed to emit ItemsChanged signal: {}", e);
+                        }
                     }
-                    // Also emit the legacy signal for backwards compatibility
-                    if let Err(e) = DaemonService::items_changed(iface_ref.signal_emitter()).await {
-                        tracing::warn!("Failed to emit ItemsChanged signal: {}", e);
+                }
+                ModuleEvent::ConfigReloaded => {
+                    // Emit signal so clients refresh with new order
+                    if let Ok(iface_ref) = connection_clone
+                        .object_server()
+                        .interface::<_, DaemonService>(crate::dbus::DAEMON_OBJECT_PATH)
+                        .await
+                    {
+                        if let Err(e) = DaemonService::items_changed(iface_ref.signal_emitter()).await {
+                            tracing::warn!("Failed to emit ItemsChanged signal: {}", e);
+                        }
+                        tracing::debug!("Emitted ItemsChanged signal after config reload");
                     }
+                }
+                ModuleEvent::Notification { .. } => {
+                    // Notifications are handled by the registry, not D-Bus
                 }
             }
         }
