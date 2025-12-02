@@ -51,7 +51,8 @@ The daemon uses a modular architecture configured via TOML:
 - **tray.rs**: System tray items via StatusNotifierItem protocol
 - **battery.rs**: Battery status via UPower D-Bus, low/critical/full notifications
 - **clock.rs**: Time display with configurable strftime format
-- **system.rs**: CPU/memory usage from `/proc/stat` and `/proc/meminfo`
+- **system.rs**: CPU/memory/temperature from `/proc/stat`, `/proc/meminfo`, `/sys/class/thermal`
+- **network.rs**: Network status and speeds from `/sys/class/net` and `/proc/net/route`
 - **weather.rs**: Weather via wttr.in API (no API key required)
 
 #### Module Trait
@@ -110,7 +111,7 @@ Config file: `~/.config/waytray/config.toml` (created automatically with default
 
 ```toml
 [modules]
-order = ["tray", "battery", "system", "weather", "clock"]
+order = ["tray", "battery", "system", "network", "weather", "clock"]
 
 [modules.tray]
 enabled = true
@@ -130,7 +131,15 @@ date_format = "%A, %B %d, %Y"
 enabled = true
 show_cpu = true
 show_memory = true
+show_temperature = false
 interval_seconds = 5
+
+[modules.network]
+enabled = true
+interface = ""          # Empty = auto-detect
+show_ip = false
+show_speed = true
+interval_seconds = 2
 
 [modules.weather]
 enabled = true
