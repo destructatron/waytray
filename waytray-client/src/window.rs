@@ -182,36 +182,61 @@ impl WayTrayWindow {
         }
     }
 
-    /// Update the displayed items
+    /// Update the displayed items (incremental update to preserve focus)
     fn update_items(&self, items: &[ModuleItem]) {
         let imp = self.imp();
 
-        // Remember currently focused item ID to restore focus after update
-        let focused_item_id = self.get_focused_item_id();
         let was_empty = imp.items_box.first_child().is_none();
+        let focused_item_id = self.get_focused_item_id();
 
-        // Clear all existing items
-        while let Some(child) = imp.items_box.first_child() {
-            imp.items_box.remove(&child);
+        // Build set of new item IDs
+        let new_ids: std::collections::HashSet<&str> =
+            items.iter().map(|i| i.id.as_str()).collect();
+
+        // Remove widgets for items that no longer exist
+        let mut to_remove = Vec::new();
+        let mut child = imp.items_box.first_child();
+        while let Some(widget) = child {
+            let next = widget.next_sibling();
+            if let Some(item_widget) = widget.downcast_ref::<ModuleItemWidget>() {
+                if let Some(id) = item_widget.item_id() {
+                    if !new_ids.contains(id.as_str()) {
+                        to_remove.push(id);
+                    }
+                }
+            }
+            child = next;
         }
 
-        // Add all items in order
+        for id in &to_remove {
+            if let Some(widget) = self.find_item_widget(id) {
+                imp.items_box.remove(&widget);
+            }
+        }
+
+        // Update existing items or add new ones in order
         for item in items {
-            let widget = ModuleItemWidget::new();
-            widget.set_item(item.clone());
+            if let Some(existing_widget) = self.find_item_widget(&item.id) {
+                // Update existing widget only if data changed
+                existing_widget.update_item_if_changed(item);
+            } else {
+                // Create new widget
+                let widget = ModuleItemWidget::new();
+                widget.set_item(item.clone());
 
-            // Connect signals
-            let window = self.clone();
-            widget.connect_activate_item(move |widget| {
-                window.activate_item(widget);
-            });
+                // Connect signals
+                let window = self.clone();
+                widget.connect_activate_item(move |widget| {
+                    window.activate_item(widget);
+                });
 
-            let window = self.clone();
-            widget.connect_context_menu_item(move |widget| {
-                window.show_context_menu(widget);
-            });
+                let window = self.clone();
+                widget.connect_context_menu_item(move |widget| {
+                    window.show_context_menu(widget);
+                });
 
-            imp.items_box.append(&widget);
+                imp.items_box.append(&widget);
+            }
         }
 
         // Update status label visibility
@@ -222,18 +247,14 @@ impl WayTrayWindow {
             imp.status_label.set_visible(false);
         }
 
-        // Restore focus
-        if was_empty {
-            // Initial load - focus first item
+        // Only grab focus on initial load, or if the focused item was removed
+        let focused_item_removed = focused_item_id
+            .as_ref()
+            .map(|id| to_remove.contains(id))
+            .unwrap_or(false);
+
+        if was_empty || focused_item_removed {
             if let Some(first) = imp.items_box.first_child() {
-                first.grab_focus();
-            }
-        } else if let Some(focused_id) = focused_item_id {
-            // Try to restore focus to the same item by ID
-            if let Some(widget) = self.find_item_widget(&focused_id) {
-                widget.grab_focus();
-            } else if let Some(first) = imp.items_box.first_child() {
-                // Item was removed, focus first item
                 first.grab_focus();
             }
         }

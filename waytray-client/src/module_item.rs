@@ -129,6 +129,56 @@ impl ModuleItemWidget {
         *imp.item_data.borrow_mut() = Some(item);
     }
 
+    /// Update item data only if it has changed
+    /// Returns true if an update was made
+    pub fn update_item_if_changed(&self, item: &ModuleItem) -> bool {
+        let imp = self.imp();
+
+        // Check if anything actually changed
+        let needs_update = {
+            let current = imp.item_data.borrow();
+            match current.as_ref() {
+                Some(current) => {
+                    current.label != item.label
+                        || current.icon_name != item.icon_name
+                        || current.tooltip != item.tooltip
+                        || current.icon_pixmap != item.icon_pixmap
+                }
+                None => true,
+            }
+        };
+
+        if needs_update {
+            // Only update the visual elements, not accessible properties
+            // unless the label actually changed
+            let label_changed = {
+                let current = imp.item_data.borrow();
+                current.as_ref().map(|c| &c.label) != Some(&item.label)
+            };
+
+            imp.label.set_text(&item.label);
+            self.update_icon(item);
+
+            if let Some(tooltip) = &item.tooltip {
+                self.set_tooltip_text(Some(tooltip));
+            }
+
+            // Only update accessible properties if label changed
+            // This prevents Orca from re-announcing unchanged items
+            if label_changed {
+                self.update_property(&[gtk4::accessible::Property::Label(&item.label)]);
+                if let Some(tooltip) = &item.tooltip {
+                    self.update_property(&[gtk4::accessible::Property::Description(tooltip)]);
+                }
+            }
+
+            *imp.item_data.borrow_mut() = Some(item.clone());
+            true
+        } else {
+            false
+        }
+    }
+
     /// Update the icon from item data
     fn update_icon(&self, item: &ModuleItem) {
         let imp = self.imp();
