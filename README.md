@@ -112,7 +112,7 @@ WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the
 [modules]
 # Module display order (left to right)
 # Modules not listed appear after these
-order = ["tray", "battery", "system", "weather", "clock"]
+order = ["tray", "battery", "system", "network", "weather", "clock"]
 
 [modules.tray]
 enabled = true
@@ -140,6 +140,13 @@ enabled = true
 location = ""                 # Empty = auto-detect from IP
 units = "celsius"             # or "fahrenheit"
 interval_seconds = 1800       # 30 minutes
+
+[modules.network]
+enabled = true
+interface = ""                # Empty = auto-detect default route
+show_ip = false
+show_speed = true
+interval_seconds = 2
 
 [notifications]
 enabled = true
@@ -210,6 +217,23 @@ Displays current weather conditions using [wttr.in](https://wttr.in) (no API key
 - Tooltip: Conditions, feels like, humidity, location
 - Icon: Weather-appropriate theme icon
 
+#### Network (`[modules.network]`)
+
+Displays network connection status and transfer speeds. Reads from `/sys/class/net` and `/proc/net/route`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable/disable the network module |
+| `interface` | string | `""` | Network interface to monitor. Empty = auto-detect default route interface |
+| `show_ip` | bool | `false` | Show IP address in tooltip |
+| `show_speed` | bool | `true` | Show upload/download speeds |
+| `interval_seconds` | u64 | `2` | Update interval in seconds |
+
+**Display:**
+- Label: Upload/download speeds (e.g., "↓1.2MB/s ↑50KB/s")
+- Tooltip: Interface name, IP address, speeds
+- Icon: `network-wireless`, `network-wired`, or `network-offline` based on interface type and status
+
 ### Notifications (`[notifications]`)
 
 Global notification settings.
@@ -229,6 +253,7 @@ Global notification settings.
 │  │   ├─ Battery module (UPower D-Bus)                   │
 │  │   ├─ Clock module (time display)                     │
 │  │   ├─ System module (CPU/memory from /proc)           │
+│  │   ├─ Network module (interface stats from /sys)      │
 │  │   └─ Weather module (wttr.in API)                    │
 │  ├─ StatusNotifierWatcher (fallback if none exists)     │
 │  ├─ Notification service (desktop notifications)        │

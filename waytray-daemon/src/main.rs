@@ -16,6 +16,7 @@ use waytray_daemon::modules::battery::BatteryModule;
 use waytray_daemon::modules::clock::ClockModule;
 use waytray_daemon::modules::system::SystemModule;
 use waytray_daemon::modules::tray::TrayModule;
+use waytray_daemon::modules::network::NetworkModule;
 use waytray_daemon::modules::weather::WeatherModule;
 use waytray_daemon::modules::ModuleRegistry;
 use waytray_daemon::notifications::NotificationService;
@@ -99,6 +100,15 @@ async fn main() -> anyhow::Result<()> {
             let weather_module = WeatherModule::new(weather_config.clone());
             registry.add_module(Arc::new(weather_module));
             tracing::info!("Weather module enabled");
+        }
+    }
+
+    // Add the network module if enabled
+    if let Some(ref network_config) = config.modules.network {
+        if network_config.enabled {
+            let network_module = NetworkModule::new(network_config.clone());
+            registry.add_module(Arc::new(network_module));
+            tracing::info!("Network module enabled");
         }
     }
 

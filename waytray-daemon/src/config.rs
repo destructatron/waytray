@@ -30,6 +30,7 @@ pub struct ModulesConfig {
     pub battery: Option<BatteryModuleConfig>,
     pub clock: Option<ClockModuleConfig>,
     pub system: Option<SystemModuleConfig>,
+    pub network: Option<NetworkModuleConfig>,
     pub weather: Option<WeatherModuleConfig>,
     #[serde(default)]
     pub scripts: Vec<ScriptModuleConfig>,
@@ -43,6 +44,7 @@ impl Default for ModulesConfig {
             battery: None,
             clock: None,
             system: None,
+            network: None,
             weather: None,
             scripts: Vec::new(),
         }
@@ -126,6 +128,32 @@ impl Default for SystemModuleConfig {
             show_memory: true,
             show_temperature: false,
             interval_seconds: 5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct NetworkModuleConfig {
+    pub enabled: bool,
+    /// Network interface to monitor (empty = auto-detect default route interface)
+    pub interface: String,
+    /// Show IP address
+    pub show_ip: bool,
+    /// Show upload/download speed
+    pub show_speed: bool,
+    /// Update interval in seconds
+    pub interval_seconds: u64,
+}
+
+impl Default for NetworkModuleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interface: String::new(), // Auto-detect
+            show_ip: false,
+            show_speed: true,
+            interval_seconds: 2,
         }
     }
 }
@@ -269,6 +297,14 @@ enabled = true
 # units = "celsius"       # or "fahrenheit"
 # interval_seconds = 1800 # 30 minutes
 
+# Uncomment to enable network module
+# [modules.network]
+# enabled = true
+# interface = ""          # Empty = auto-detect default route interface
+# show_ip = false
+# show_speed = true
+# interval_seconds = 2
+
 [notifications]
 enabled = true
 timeout_ms = 5000
@@ -309,6 +345,11 @@ timeout_ms = 5000
         if let Some(ref weather) = self.modules.weather {
             if weather.enabled && !order.contains(&"weather".to_string()) {
                 order.push("weather".to_string());
+            }
+        }
+        if let Some(ref network) = self.modules.network {
+            if network.enabled && !order.contains(&"network".to_string()) {
+                order.push("network".to_string());
             }
         }
         for script in &self.modules.scripts {
