@@ -10,6 +10,7 @@ use tracing_subscriber::EnvFilter;
 use zbus::connection::Connection;
 
 use waytray_daemon::config::Config;
+use waytray_daemon::config_watcher;
 use waytray_daemon::dbus_service;
 use waytray_daemon::modules::battery::BatteryModule;
 use waytray_daemon::modules::clock::ClockModule;
@@ -112,6 +113,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Start the daemon D-Bus service for clients
     dbus_service::start_service_with_registry(&connection, registry.clone()).await?;
+
+    // Start config file watcher for hot reload
+    let config_path = Config::config_path();
+    if let Err(e) = config_watcher::watch_config(config_path, registry.clone()).await {
+        tracing::warn!("Failed to start config watcher: {}", e);
+    }
 
     tracing::info!("WayTray daemon is running");
 

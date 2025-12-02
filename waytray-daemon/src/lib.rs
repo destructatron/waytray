@@ -8,6 +8,7 @@
 
 pub mod cache;
 pub mod config;
+pub mod config_watcher;
 pub mod dbus_service;
 pub mod host;
 pub mod modules;

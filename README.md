@@ -102,7 +102,9 @@ Then bind `waytray` to a keyboard shortcut in your compositor for quick access.
 
 ## Configuration
 
-WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the file doesn't exist, defaults are used.
+WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the file doesn't exist, it is created with defaults.
+
+**Hot Reload**: The daemon automatically watches the config file and reloads module settings when it changes. No restart required for most configuration changes.
 
 ### Example Configuration
 

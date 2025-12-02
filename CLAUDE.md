@@ -40,6 +40,7 @@ The daemon uses a modular architecture configured via TOML:
 #### Core Files
 - **main.rs**: Entry point, loads config, initializes modules and D-Bus services
 - **config.rs**: TOML configuration from `~/.config/waytray/config.toml` (auto-created with defaults)
+- **config_watcher.rs**: File watcher for config hot reload (uses `notify` crate)
 - **dbus_service.rs**: Exposes `org.waytray.Daemon` interface for clients
 - **notifications.rs**: Desktop notifications via freedesktop notification spec (notify-rust)
 - **watcher.rs**: Fallback StatusNotifierWatcher if none exists (e.g., from KDE/GNOME)
@@ -62,10 +63,12 @@ pub trait Module: Send + Sync {
     async fn start(&self, ctx: Arc<ModuleContext>);
     async fn stop(&self);
     async fn invoke_action(&self, item_id: &str, action_id: &str, x: i32, y: i32);
+    async fn reload_config(&self, config: &Config) -> bool; // Hot reload support
 }
 ```
 
 Modules emit `ModuleEvent::ItemsUpdated` via `ModuleContext` to update the registry.
+Modules store config in `RwLock` to support hot reload when the config file changes.
 
 ### Client (`waytray-client`)
 

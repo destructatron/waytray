@@ -4,24 +4,26 @@ use std::sync::Arc;
 use std::time::Duration;
 use async_trait::async_trait;
 use chrono::{Local, Timelike};
+use tokio::sync::RwLock;
 
 use crate::config::ClockModuleConfig;
 use super::{Module, ModuleContext, ModuleItem};
 
 /// Clock module that displays the current time
 pub struct ClockModule {
-    config: ClockModuleConfig,
+    config: RwLock<ClockModuleConfig>,
 }
 
 impl ClockModule {
     pub fn new(config: ClockModuleConfig) -> Self {
-        Self { config }
+        Self { config: RwLock::new(config) }
     }
 
-    fn create_module_item(&self) -> ModuleItem {
+    async fn create_module_item(&self) -> ModuleItem {
+        let config = self.config.read().await;
         let now = Local::now();
-        let time_str = now.format(&self.config.format).to_string();
-        let date_str = now.format(&self.config.date_format).to_string();
+        let time_str = now.format(&config.format).to_string();
+        let date_str = now.format(&config.date_format).to_string();
 
         ModuleItem {
             id: "clock:time".to_string(),
@@ -44,16 +46,16 @@ impl Module for ClockModule {
     }
 
     fn enabled(&self) -> bool {
-        self.config.enabled
+        self.config.try_read().map(|c| c.enabled).unwrap_or(true)
     }
 
     async fn start(&self, ctx: Arc<ModuleContext>) {
-        if !self.enabled() {
+        if !self.config.read().await.enabled {
             return;
         }
 
         // Send initial time
-        let item = self.create_module_item();
+        let item = self.create_module_item().await;
         ctx.send_items("clock", vec![item]);
 
         // Update every minute, synchronized to the minute boundary
@@ -70,7 +72,7 @@ impl Module for ClockModule {
 
             tokio::time::sleep(sleep_duration).await;
 
-            let item = self.create_module_item();
+            let item = self.create_module_item().await;
             ctx.send_items("clock", vec![item]);
         }
     }
@@ -81,5 +83,16 @@ impl Module for ClockModule {
 
     async fn invoke_action(&self, _item_id: &str, _action_id: &str, _x: i32, _y: i32) {
         // Clock module has no actions
+    }
+
+    async fn reload_config(&self, config: &crate::config::Config) -> bool {
+        if let Some(ref clock_config) = config.modules.clock {
+            let mut current = self.config.write().await;
+            *current = clock_config.clone();
+            tracing::debug!("Clock module config reloaded");
+            true
+        } else {
+            false
+        }
     }
 }

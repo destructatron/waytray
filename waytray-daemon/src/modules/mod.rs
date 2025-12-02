@@ -161,6 +161,12 @@ pub trait Module: Send + Sync {
 
     /// Handle an action invocation on an item
     async fn invoke_action(&self, item_id: &str, action_id: &str, x: i32, y: i32);
+
+    /// Reload module configuration. Returns true if config was accepted.
+    /// Default implementation does nothing (module doesn't support hot reload).
+    async fn reload_config(&self, _config: &crate::config::Config) -> bool {
+        false
+    }
 }
 
 use crate::notifications::NotificationService;
@@ -300,6 +306,16 @@ impl ModuleRegistry {
                 enabled: m.enabled(),
             })
             .collect()
+    }
+
+    /// Reload configuration for all modules
+    pub async fn reload_config(&self, config: &crate::config::Config) {
+        for module in &self.modules {
+            let name = module.name();
+            if module.reload_config(config).await {
+                tracing::info!("Reloaded config for module: {}", name);
+            }
+        }
     }
 }
 

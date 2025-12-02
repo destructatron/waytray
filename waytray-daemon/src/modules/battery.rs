@@ -106,7 +106,7 @@ trait UPowerDevice {
 
 /// Battery module that displays battery status
 pub struct BatteryModule {
-    config: BatteryModuleConfig,
+    config: RwLock<BatteryModuleConfig>,
     connection: RwLock<Option<Connection>>,
     last_low_notification: RwLock<bool>,
     last_critical_notification: RwLock<bool>,
@@ -116,7 +116,7 @@ pub struct BatteryModule {
 impl BatteryModule {
     pub fn new(config: BatteryModuleConfig) -> Self {
         Self {
-            config,
+            config: RwLock::new(config),
             connection: RwLock::new(None),
             last_low_notification: RwLock::new(false),
             last_critical_notification: RwLock::new(false),
@@ -212,8 +212,10 @@ impl BatteryModule {
     }
 
     async fn check_and_send_notifications(&self, ctx: &ModuleContext, percentage: u8, state: BatteryState) {
+        let config = self.config.read().await;
+
         // Check for fully charged notification
-        if state == BatteryState::FullyCharged && self.config.notify_full_charge {
+        if state == BatteryState::FullyCharged && config.notify_full_charge {
             let already_notified = *self.last_full_notification.read().await;
             if !already_notified {
                 ctx.send_notification(
@@ -237,7 +239,7 @@ impl BatteryModule {
         }
 
         // Critical battery notification
-        if percentage <= self.config.critical_threshold {
+        if percentage <= config.critical_threshold {
             let already_notified = *self.last_critical_notification.read().await;
             if !already_notified {
                 ctx.send_notification(
@@ -249,7 +251,7 @@ impl BatteryModule {
             }
         }
         // Low battery notification
-        else if percentage <= self.config.low_threshold {
+        else if percentage <= config.low_threshold {
             let already_notified = *self.last_low_notification.read().await;
             if !already_notified {
                 ctx.send_notification(
@@ -270,11 +272,12 @@ impl Module for BatteryModule {
     }
 
     fn enabled(&self) -> bool {
-        self.config.enabled
+        // Use try_read to avoid blocking, default to true if lock is held
+        self.config.try_read().map(|c| c.enabled).unwrap_or(true)
     }
 
     async fn start(&self, ctx: Arc<ModuleContext>) {
-        if !self.enabled() {
+        if !self.config.read().await.enabled {
             return;
         }
 
@@ -323,5 +326,16 @@ impl Module for BatteryModule {
 
     async fn invoke_action(&self, _item_id: &str, _action_id: &str, _x: i32, _y: i32) {
         // Battery module has no actions
+    }
+
+    async fn reload_config(&self, config: &crate::config::Config) -> bool {
+        if let Some(ref battery_config) = config.modules.battery {
+            let mut current = self.config.write().await;
+            *current = battery_config.clone();
+            tracing::debug!("Battery module config reloaded");
+            true
+        } else {
+            false
+        }
     }
 }

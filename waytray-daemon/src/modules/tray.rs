@@ -14,7 +14,7 @@ use super::{ItemAction, Module, ModuleContext, ModuleItem};
 
 /// The system tray module - wraps SNI protocol as a module
 pub struct TrayModule {
-    config: TrayModuleConfig,
+    config: RwLock<TrayModuleConfig>,
     host: RwLock<Option<Arc<Host>>>,
     cache: Arc<ItemCache>,
     connection: Connection,
@@ -23,7 +23,7 @@ pub struct TrayModule {
 impl TrayModule {
     pub fn new(config: TrayModuleConfig, connection: Connection) -> Self {
         Self {
-            config,
+            config: RwLock::new(config),
             host: RwLock::new(None),
             cache: ItemCache::new(),
             connection,
@@ -94,11 +94,11 @@ impl Module for TrayModule {
     }
 
     fn enabled(&self) -> bool {
-        self.config.enabled
+        self.config.try_read().map(|c| c.enabled).unwrap_or(true)
     }
 
     async fn start(&self, ctx: Arc<ModuleContext>) {
-        if !self.enabled() {
+        if !self.config.read().await.enabled {
             return;
         }
 
@@ -215,5 +215,12 @@ impl Module for TrayModule {
         if let Err(e) = result {
             tracing::warn!("Failed to invoke {} on {}: {}", action_id, original_id, e);
         }
+    }
+
+    async fn reload_config(&self, config: &crate::config::Config) -> bool {
+        let mut current = self.config.write().await;
+        *current = config.modules.tray.clone();
+        tracing::debug!("Tray module config reloaded");
+        true
     }
 }

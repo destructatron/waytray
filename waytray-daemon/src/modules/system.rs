@@ -16,14 +16,14 @@ struct CpuState {
 
 /// System module that displays CPU and memory usage
 pub struct SystemModule {
-    config: SystemModuleConfig,
+    config: RwLock<SystemModuleConfig>,
     cpu_state: RwLock<Option<CpuState>>,
 }
 
 impl SystemModule {
     pub fn new(config: SystemModuleConfig) -> Self {
         Self {
-            config,
+            config: RwLock::new(config),
             cpu_state: RwLock::new(None),
         }
     }
@@ -142,15 +142,16 @@ impl SystemModule {
     }
 
     async fn create_items(&self) -> Vec<ModuleItem> {
+        let config = self.config.read().await;
         let mut items = Vec::new();
 
-        if self.config.show_cpu {
+        if config.show_cpu {
             if let Some(usage) = self.get_cpu_usage().await {
                 items.push(self.create_cpu_item(usage));
             }
         }
 
-        if self.config.show_memory {
+        if config.show_memory {
             if let Some((percent, used_gb, total_gb)) = self.get_memory_usage().await {
                 items.push(self.create_memory_item(percent, used_gb, total_gb));
             }
@@ -167,11 +168,11 @@ impl Module for SystemModule {
     }
 
     fn enabled(&self) -> bool {
-        self.config.enabled
+        self.config.try_read().map(|c| c.enabled).unwrap_or(true)
     }
 
     async fn start(&self, ctx: Arc<ModuleContext>) {
-        if !self.enabled() {
+        if !self.config.read().await.enabled {
             return;
         }
 
@@ -185,11 +186,14 @@ impl Module for SystemModule {
         let items = self.create_items().await;
         ctx.send_items("system", items);
 
-        // Poll at configured interval
-        let poll_interval = Duration::from_secs(self.config.interval_seconds);
-
+        // Poll at configured interval (re-read each iteration for hot reload)
         loop {
-            tokio::time::sleep(poll_interval).await;
+            let interval = {
+                let config = self.config.read().await;
+                Duration::from_secs(config.interval_seconds)
+            };
+
+            tokio::time::sleep(interval).await;
 
             let items = self.create_items().await;
             ctx.send_items("system", items);
@@ -202,5 +206,16 @@ impl Module for SystemModule {
 
     async fn invoke_action(&self, _item_id: &str, _action_id: &str, _x: i32, _y: i32) {
         // System module has no actions
+    }
+
+    async fn reload_config(&self, config: &crate::config::Config) -> bool {
+        if let Some(ref system_config) = config.modules.system {
+            let mut current = self.config.write().await;
+            *current = system_config.clone();
+            tracing::debug!("System module config reloaded");
+            true
+        } else {
+            false
+        }
     }
 }
