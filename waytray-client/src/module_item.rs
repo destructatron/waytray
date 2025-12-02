@@ -11,7 +11,7 @@ use waytray_daemon::ModuleItem;
 
 mod imp {
     use super::*;
-    use gtk4::subclass::flow_box_child::FlowBoxChildImpl;
+    use gtk4::subclass::box_::BoxImpl;
     use gtk4::subclass::widget::WidgetImpl;
 
     #[derive(Default)]
@@ -19,21 +19,19 @@ mod imp {
         pub item_data: RefCell<Option<ModuleItem>>,
         pub icon: gtk4::Image,
         pub label: gtk4::Label,
-        pub hbox: gtk4::Box,
     }
 
     #[glib::object_subclass]
     impl ObjectSubclass for ModuleItemWidget {
         const NAME: &'static str = "WayTrayModuleItem";
         type Type = super::ModuleItemWidget;
-        type ParentType = gtk4::FlowBoxChild;
+        type ParentType = gtk4::Box;
 
         fn new() -> Self {
             Self {
                 item_data: RefCell::new(None),
                 icon: gtk4::Image::new(),
                 label: gtk4::Label::new(None),
-                hbox: gtk4::Box::new(gtk4::Orientation::Horizontal, 8),
             }
         }
     }
@@ -54,21 +52,23 @@ mod imp {
 
             let obj = self.obj();
 
+            // Configure the box layout
+            obj.set_orientation(gtk4::Orientation::Horizontal);
+            obj.set_spacing(8);
+            obj.set_margin_start(8);
+            obj.set_margin_end(8);
+            obj.set_margin_top(6);
+            obj.set_margin_bottom(6);
+
             // Configure the icon
             self.icon.set_pixel_size(24);
 
             // Configure the label
             self.label.set_xalign(0.0);
 
-            // Build the layout - more compact for horizontal flow
-            self.hbox.set_margin_start(8);
-            self.hbox.set_margin_end(8);
-            self.hbox.set_margin_top(6);
-            self.hbox.set_margin_bottom(6);
-            self.hbox.append(&self.icon);
-            self.hbox.append(&self.label);
-
-            obj.set_child(Some(&self.hbox));
+            // Add children directly to this box
+            obj.append(&self.icon);
+            obj.append(&self.label);
 
             // Make focusable
             obj.set_focusable(true);
@@ -92,13 +92,13 @@ mod imp {
     }
 
     impl WidgetImpl for ModuleItemWidget {}
-    impl FlowBoxChildImpl for ModuleItemWidget {}
+    impl BoxImpl for ModuleItemWidget {}
 }
 
 glib::wrapper! {
     pub struct ModuleItemWidget(ObjectSubclass<imp::ModuleItemWidget>)
-        @extends gtk4::FlowBoxChild, gtk4::Widget,
-        @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
+        @extends gtk4::Box, gtk4::Widget,
+        @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget, gtk4::Orientable;
 }
 
 impl ModuleItemWidget {

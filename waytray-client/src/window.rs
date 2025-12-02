@@ -19,7 +19,8 @@ mod imp {
     use gtk4::subclass::window::WindowImpl;
 
     pub struct WayTrayWindow {
-        pub flow_box: gtk4::FlowBox,
+        /// Horizontal box containing the items (replaces FlowBox for better a11y)
+        pub items_box: gtk4::Box,
         pub scrolled_window: gtk4::ScrolledWindow,
         pub status_label: gtk4::Label,
         pub main_box: gtk4::Box,
@@ -29,7 +30,7 @@ mod imp {
     impl Default for WayTrayWindow {
         fn default() -> Self {
             Self {
-                flow_box: gtk4::FlowBox::new(),
+                items_box: gtk4::Box::new(gtk4::Orientation::Horizontal, 0),
                 scrolled_window: gtk4::ScrolledWindow::new(),
                 status_label: gtk4::Label::new(Some("Connecting to daemon...")),
                 main_box: gtk4::Box::new(gtk4::Orientation::Vertical, 0),
@@ -56,31 +57,16 @@ mod imp {
             obj.set_default_size(600, 60);
             obj.set_resizable(true);
 
-            // Configure the flow box for horizontal single-row layout
-            self.flow_box.set_orientation(gtk4::Orientation::Horizontal);
-            self.flow_box.set_selection_mode(gtk4::SelectionMode::Single);
-            self.flow_box.set_homogeneous(false);
-            self.flow_box.set_max_children_per_line(u32::MAX);
-            self.flow_box.set_min_children_per_line(1);
-            self.flow_box.set_activate_on_single_click(false);
+            // Configure the horizontal items box
+            self.items_box.set_orientation(gtk4::Orientation::Horizontal);
+            self.items_box.set_spacing(4);
 
-            // Set accessible properties for the flow box
-            self.flow_box
+            // Set accessible role for the items container
+            self.items_box
                 .set_accessible_role(gtk4::AccessibleRole::List);
 
-            // Handle child activation (double-click or Enter from FlowBox)
-            self.flow_box.connect_child_activated(glib::clone!(
-                #[weak]
-                obj,
-                move |_, child| {
-                    if let Some(item_widget) = child.downcast_ref::<ModuleItemWidget>() {
-                        obj.activate_item(item_widget);
-                    }
-                }
-            ));
-
             // Configure scrolled window for horizontal scrolling only
-            self.scrolled_window.set_child(Some(&self.flow_box));
+            self.scrolled_window.set_child(Some(&self.items_box));
             self.scrolled_window.set_vexpand(false);
             self.scrolled_window.set_hexpand(true);
             self.scrolled_window
@@ -98,7 +84,7 @@ mod imp {
 
             obj.set_child(Some(&self.main_box));
 
-            // Set up keyboard handling for the window
+            // Set up keyboard handling for left/right navigation and escape
             let key_controller = gtk4::EventControllerKey::new();
             key_controller.connect_key_pressed(glib::clone!(
                 #[weak]
@@ -109,6 +95,14 @@ mod imp {
                     match keyval {
                         gdk::Key::Escape => {
                             obj.close();
+                            glib::Propagation::Stop
+                        }
+                        gdk::Key::Left => {
+                            obj.navigate_items(-1);
+                            glib::Propagation::Stop
+                        }
+                        gdk::Key::Right => {
+                            obj.navigate_items(1);
                             glib::Propagation::Stop
                         }
                         _ => glib::Propagation::Proceed,
@@ -192,40 +186,157 @@ impl WayTrayWindow {
     fn update_items(&self, items: &[ModuleItem]) {
         let imp = self.imp();
 
-        // Clear existing items
-        while let Some(child) = imp.flow_box.first_child() {
-            imp.flow_box.remove(&child);
+        // Remember currently focused item ID to restore focus after update
+        let focused_item_id = self.get_focused_item_id();
+        let was_empty = imp.items_box.first_child().is_none();
+
+        // Clear all existing items
+        while let Some(child) = imp.items_box.first_child() {
+            imp.items_box.remove(&child);
         }
 
+        // Add all items in order
+        for item in items {
+            let widget = ModuleItemWidget::new();
+            widget.set_item(item.clone());
+
+            // Connect signals
+            let window = self.clone();
+            widget.connect_activate_item(move |widget| {
+                window.activate_item(widget);
+            });
+
+            let window = self.clone();
+            widget.connect_context_menu_item(move |widget| {
+                window.show_context_menu(widget);
+            });
+
+            imp.items_box.append(&widget);
+        }
+
+        // Update status label visibility
         if items.is_empty() {
             imp.status_label.set_text("No items");
             imp.status_label.set_visible(true);
         } else {
             imp.status_label.set_visible(false);
+        }
 
-            for item in items {
-                let widget = ModuleItemWidget::new();
-                widget.set_item(item.clone());
-
-                // Connect signals
-                let window = self.clone();
-                widget.connect_activate_item(move |widget| {
-                    window.activate_item(widget);
-                });
-
-                let window = self.clone();
-                widget.connect_context_menu_item(move |widget| {
-                    window.show_context_menu(widget);
-                });
-
-                imp.flow_box.append(&widget);
+        // Restore focus
+        if was_empty {
+            // Initial load - focus first item
+            if let Some(first) = imp.items_box.first_child() {
+                first.grab_focus();
             }
-
-            // Focus the first item
-            if let Some(first) = imp.flow_box.child_at_index(0) {
+        } else if let Some(focused_id) = focused_item_id {
+            // Try to restore focus to the same item by ID
+            if let Some(widget) = self.find_item_widget(&focused_id) {
+                widget.grab_focus();
+            } else if let Some(first) = imp.items_box.first_child() {
+                // Item was removed, focus first item
                 first.grab_focus();
             }
         }
+    }
+
+    /// Get the ID of the currently focused item, if any
+    fn get_focused_item_id(&self) -> Option<String> {
+        let imp = self.imp();
+        let mut child = imp.items_box.first_child();
+        while let Some(widget) = child {
+            if widget.has_focus() || widget.is_focus() {
+                if let Some(item_widget) = widget.downcast_ref::<ModuleItemWidget>() {
+                    return item_widget.item_id();
+                }
+            }
+            child = widget.next_sibling();
+        }
+        None
+    }
+
+    /// Find a widget by item ID
+    fn find_item_widget(&self, item_id: &str) -> Option<ModuleItemWidget> {
+        let imp = self.imp();
+        let mut child = imp.items_box.first_child();
+        while let Some(widget) = child {
+            if let Some(item_widget) = widget.downcast_ref::<ModuleItemWidget>() {
+                if item_widget.item_id().as_deref() == Some(item_id) {
+                    return Some(item_widget.clone());
+                }
+            }
+            child = widget.next_sibling();
+        }
+        None
+    }
+
+    /// Navigate between items using left/right arrows
+    fn navigate_items(&self, direction: i32) {
+        let imp = self.imp();
+
+        // Find currently focused item index
+        let mut current_index: Option<i32> = None;
+        let mut count = 0i32;
+        let mut child = imp.items_box.first_child();
+        while let Some(widget) = child {
+            if widget.has_focus() || widget.is_focus() {
+                current_index = Some(count);
+                break;
+            }
+            count += 1;
+            child = widget.next_sibling();
+        }
+
+        // Calculate new index
+        let total = self.item_count();
+        if total == 0 {
+            return;
+        }
+
+        let new_index = match current_index {
+            Some(idx) => {
+                let new = idx + direction;
+                if new < 0 {
+                    total - 1 // Wrap to end
+                } else if new >= total {
+                    0 // Wrap to start
+                } else {
+                    new
+                }
+            }
+            None => 0, // No focus, start at beginning
+        };
+
+        // Focus the new item
+        if let Some(widget) = self.child_at_index(new_index) {
+            widget.grab_focus();
+        }
+    }
+
+    /// Get total number of items
+    fn item_count(&self) -> i32 {
+        let imp = self.imp();
+        let mut count = 0i32;
+        let mut child = imp.items_box.first_child();
+        while child.is_some() {
+            count += 1;
+            child = child.unwrap().next_sibling();
+        }
+        count
+    }
+
+    /// Get child widget at index
+    fn child_at_index(&self, index: i32) -> Option<gtk4::Widget> {
+        let imp = self.imp();
+        let mut current = 0i32;
+        let mut child = imp.items_box.first_child();
+        while let Some(widget) = child {
+            if current == index {
+                return Some(widget);
+            }
+            current += 1;
+            child = widget.next_sibling();
+        }
+        None
     }
 
     /// Listen for item changes from the daemon
@@ -328,9 +439,9 @@ impl WayTrayWindow {
         imp.status_label.set_text(message);
         imp.status_label.set_visible(true);
 
-        // Clear the flow box
-        while let Some(child) = imp.flow_box.first_child() {
-            imp.flow_box.remove(&child);
+        // Clear the items box
+        while let Some(child) = imp.items_box.first_child() {
+            imp.items_box.remove(&child);
         }
     }
 }
