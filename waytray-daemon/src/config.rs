@@ -187,16 +187,18 @@ impl Default for NotificationsConfig {
 
 impl Config {
     /// Load configuration from the default path (~/.config/waytray/config.toml)
-    /// Returns default config if file doesn't exist
+    /// Creates the config file with defaults if it doesn't exist
     pub fn load() -> Result<Self> {
         let path = Self::config_path();
         Self::load_from_path(&path)
     }
 
     /// Load configuration from a specific path
+    /// Creates the config file with defaults if it doesn't exist
     pub fn load_from_path(path: &PathBuf) -> Result<Self> {
         if !path.exists() {
-            tracing::info!("Config file not found at {:?}, using defaults", path);
+            tracing::info!("Config file not found at {:?}, creating with defaults", path);
+            Self::write_default_config(path)?;
             return Ok(Self::default());
         }
 
@@ -208,6 +210,61 @@ impl Config {
 
         tracing::info!("Loaded config from {:?}", path);
         Ok(config)
+    }
+
+    /// Write the default configuration to a file
+    fn write_default_config(path: &PathBuf) -> Result<()> {
+        // Create parent directory if needed
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create config directory: {:?}", parent))?;
+        }
+
+        let default_config = Self::default_config_string();
+        fs::write(path, default_config)
+            .with_context(|| format!("Failed to write default config to {:?}", path))?;
+
+        tracing::info!("Created default config at {:?}", path);
+        Ok(())
+    }
+
+    /// Generate the default configuration as a TOML string
+    fn default_config_string() -> String {
+        r#"# WayTray Configuration
+# See https://github.com/destructatron/waytray for documentation
+
+[modules]
+# Module display order (left to right)
+# Modules not listed appear after these
+order = ["tray"]
+
+[modules.tray]
+enabled = true
+
+# Uncomment to enable battery module
+# [modules.battery]
+# enabled = true
+# low_threshold = 20
+# critical_threshold = 10
+# notify_full_charge = false
+
+# Uncomment to enable clock module
+# [modules.clock]
+# enabled = true
+# format = "%H:%M"
+# date_format = "%A, %B %d, %Y"
+
+# Uncomment to enable system (CPU/memory) module
+# [modules.system]
+# enabled = true
+# show_cpu = true
+# show_memory = true
+# interval_seconds = 5
+
+[notifications]
+enabled = true
+timeout_ms = 5000
+"#.to_string()
     }
 
     /// Get the default config file path
