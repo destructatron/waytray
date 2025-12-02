@@ -58,8 +58,9 @@ pub struct WeatherModule {
 impl WeatherModule {
     pub fn new(config: WeatherModuleConfig) -> Self {
         let http_client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
-            .user_agent("WayTray/1.0")
+            .user_agent("curl/7.68.0") // wttr.in works better with curl user agent
             .build()
             .expect("Failed to create HTTP client");
 
@@ -75,14 +76,8 @@ impl WeatherModule {
             urlencoding::encode(&self.config.location).into_owned()
         };
 
-        // Use metric (m) or USCS (u) units
-        let units_param = if self.config.units.to_lowercase() == "fahrenheit" {
-            "u"
-        } else {
-            "m"
-        };
-
-        format!("https://wttr.in/{}?format=j1&{}", location, units_param)
+        // JSON format includes both temp_C and temp_F, no need for units param
+        format!("https://wttr.in/{}?format=j1", location)
     }
 
     /// Fetch weather data from wttr.in
