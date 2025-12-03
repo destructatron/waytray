@@ -23,6 +23,8 @@ mod imp {
         pub content_box: gtk4::Box,
         pub item_id: RefCell<String>,
         pub client: RefCell<Option<Arc<DaemonClient>>>,
+        /// For submenus, stores the parent button to return focus to on Left arrow
+        pub parent_button: RefCell<Option<gtk4::Button>>,
     }
 
     #[glib::object_subclass]
@@ -36,6 +38,7 @@ mod imp {
                 content_box: gtk4::Box::new(gtk4::Orientation::Vertical, 0),
                 item_id: RefCell::new(String::new()),
                 client: RefCell::new(None),
+                parent_button: RefCell::new(None),
             }
         }
     }
@@ -103,6 +106,11 @@ impl MenuPopover {
     /// Set the tray item ID this menu belongs to
     pub fn set_item_id(&self, item_id: &str) {
         *self.imp().item_id.borrow_mut() = item_id.to_string();
+    }
+
+    /// Set the parent button (for submenus, to return focus on Left arrow)
+    pub fn set_parent_button(&self, button: &gtk4::Button) {
+        *self.imp().parent_button.borrow_mut() = Some(button.clone());
     }
 
     /// Populate the menu with items (flat list with parent_id relationships)
@@ -242,6 +250,7 @@ impl MenuPopover {
                 // Show submenu as a nested popover
                 let submenu_popover = MenuPopover::new();
                 submenu_popover.set_parent(btn);
+                submenu_popover.set_parent_button(btn);
                 submenu_popover.set_client(
                     popover
                         .imp()
@@ -322,8 +331,63 @@ impl MenuPopover {
                 }
                 glib::Propagation::Stop
             }
+            gdk::Key::Right => {
+                // Open submenu if focused item has one (emit click to trigger submenu)
+                if let Some(button) = self.get_focused_button() {
+                    if self.button_has_submenu(&button) {
+                        button.emit_clicked();
+                        return glib::Propagation::Stop;
+                    }
+                }
+                glib::Propagation::Proceed
+            }
+            gdk::Key::Left => {
+                // Close this submenu and return to parent menu item
+                let parent_button = self.imp().parent_button.borrow().clone();
+                if let Some(button) = parent_button {
+                    self.popdown();
+                    // Focus the parent button after closing
+                    button.grab_focus();
+                    return glib::Propagation::Stop;
+                }
+                glib::Propagation::Proceed
+            }
             _ => glib::Propagation::Proceed,
         }
+    }
+
+    /// Find the currently focused button in the menu
+    fn get_focused_button(&self) -> Option<gtk4::Button> {
+        let imp = self.imp();
+        let mut child = imp.content_box.first_child();
+        while let Some(widget) = child {
+            if let Some(button) = widget.downcast_ref::<gtk4::Button>() {
+                if widget.has_focus() || widget.is_focus() {
+                    return Some(button.clone());
+                }
+            }
+            child = widget.next_sibling();
+        }
+        None
+    }
+
+    /// Check if a button represents a submenu item (has go-next-symbolic indicator)
+    fn button_has_submenu(&self, button: &gtk4::Button) -> bool {
+        // The button's child is a Box containing the content
+        if let Some(content) = button.child() {
+            if let Some(content_box) = content.downcast_ref::<gtk4::Box>() {
+                // Check if the last child is a go-next-symbolic image
+                if let Some(last) = content_box.last_child() {
+                    if let Some(image) = last.downcast_ref::<gtk4::Image>() {
+                        // Check if it's the submenu arrow icon
+                        if let Some(icon_name) = image.icon_name() {
+                            return icon_name == "go-next-symbolic";
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Navigate between menu items
