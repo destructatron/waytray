@@ -628,10 +628,17 @@ pub async fn watch_name_changes(
                 // If new_owner is empty, the name was released
                 if args.new_owner.is_none() || args.new_owner.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
                     let name = args.name.to_string();
-                    // Check if this was a tray item
-                    if name.starts_with("org.kde.StatusNotifierItem") {
-                        tracing::info!("D-Bus name vanished: {}", name);
-                        cache.remove(&name).await;
+
+                    // Remove any items using this D-Bus name as their bus_name
+                    // This handles both well-known names (org.kde.StatusNotifierItem-*)
+                    // and unique names (:1.75) that crash without proper unregistration
+                    let removed = cache.remove_by_bus_name(&name).await;
+                    if !removed.is_empty() {
+                        tracing::info!(
+                            "D-Bus name vanished: {}, removed {} item(s)",
+                            name,
+                            removed.len()
+                        );
                     }
                 }
             }

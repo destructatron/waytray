@@ -59,6 +59,31 @@ impl ItemCache {
         removed
     }
 
+    /// Remove all items that have the given bus_name
+    ///
+    /// This is used when a D-Bus connection disappears (e.g., app crashes)
+    /// to clean up any items that were registered with that connection.
+    pub async fn remove_by_bus_name(&self, bus_name: &str) -> Vec<TrayItem> {
+        let mut items = self.items.write().await;
+
+        // Find all item IDs that match this bus_name
+        let ids_to_remove: Vec<String> = items
+            .iter()
+            .filter(|(_, item)| item.bus_name == bus_name)
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        let mut removed = Vec::new();
+        for id in ids_to_remove {
+            if let Some(item) = items.remove(&id) {
+                let _ = self.change_tx.send(CacheEvent::ItemRemoved(id));
+                removed.push(item);
+            }
+        }
+
+        removed
+    }
+
     /// Get an item by ID
     pub async fn get(&self, id: &str) -> Option<TrayItem> {
         let items = self.items.read().await;
