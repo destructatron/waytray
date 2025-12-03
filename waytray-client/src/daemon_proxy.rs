@@ -123,7 +123,10 @@ impl DaemonClient {
     pub async fn wait_for_items_changed(&self) -> anyhow::Result<()> {
         use futures::StreamExt;
         let mut stream = self.proxy.receive_items_changed().await?;
-        stream.next().await;
+        stream
+            .next()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("D-Bus signal stream ended unexpectedly"))?;
         Ok(())
     }
 
@@ -165,11 +168,12 @@ impl DaemonClient {
     pub async fn wait_for_module_items_changed(&self) -> anyhow::Result<String> {
         use futures::StreamExt;
         let mut stream = self.proxy.receive_module_items_changed().await?;
-        if let Some(signal) = stream.next().await {
-            let args = signal.args()?;
-            return Ok(args.module_name);
-        }
-        Ok(String::new())
+        let signal = stream
+            .next()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("D-Bus signal stream ended unexpectedly"))?;
+        let args = signal.args()?;
+        Ok(args.module_name)
     }
 
     // =========================================================================

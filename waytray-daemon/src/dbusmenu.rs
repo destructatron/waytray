@@ -106,9 +106,12 @@ pub async fn fetch_menu(
     let (_revision, layout) = proxy.get_layout(0, -1, property_names).await?;
 
     // Parse the root item and return its children (root itself is not displayed)
-    let root = parse_menu_item(layout)?;
+    let root = parse_menu_item(layout, 0)?;
     Ok(root.children)
 }
+
+/// Maximum menu nesting depth to prevent stack overflow from malicious menus
+const MAX_MENU_DEPTH: usize = 10;
 
 /// Activate a menu item by sending a "clicked" event
 pub async fn activate_menu_item(
@@ -139,7 +142,12 @@ pub async fn activate_menu_item(
 /// Parse a menu item from the DBusMenu layout structure
 fn parse_menu_item(
     layout: (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>),
+    depth: usize,
 ) -> anyhow::Result<MenuItem> {
+    if depth > MAX_MENU_DEPTH {
+        anyhow::bail!("Menu depth exceeds maximum of {}", MAX_MENU_DEPTH);
+    }
+
     let (id, properties, children_raw) = layout;
 
     let mut item = MenuItem {
@@ -194,13 +202,13 @@ fn parse_menu_item(
         }
     }
 
-    // Parse children recursively
+    // Parse children recursively (with depth limit)
     for child_value in children_raw {
         // Each child is a variant containing (id, properties, children)
         if let Ok(child_struct) = <(i32, HashMap<String, OwnedValue>, Vec<OwnedValue>)>::try_from(
             child_value.clone(),
         ) {
-            if let Ok(child_item) = parse_menu_item(child_struct) {
+            if let Ok(child_item) = parse_menu_item(child_struct, depth + 1) {
                 // Only include visible items
                 if child_item.visible {
                     item.children.push(child_item);

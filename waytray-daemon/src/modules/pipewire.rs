@@ -72,10 +72,25 @@ impl PipewireModule {
     /// Get current audio state using pactl
     fn get_audio_state() -> Option<AudioState> {
         // Get default sink name
-        let default_sink = Command::new("pactl")
+        let default_sink = match Command::new("pactl")
             .args(["get-default-sink"])
             .output()
-            .ok()?;
+        {
+            Ok(output) => {
+                if !output.status.success() {
+                    tracing::debug!(
+                        "pactl get-default-sink failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                    return None;
+                }
+                output
+            }
+            Err(e) => {
+                tracing::debug!("Failed to execute pactl: {}", e);
+                return None;
+            }
+        };
 
         let sink_name = String::from_utf8_lossy(&default_sink.stdout)
             .trim()
@@ -86,19 +101,49 @@ impl PipewireModule {
         }
 
         // Get volume
-        let volume_output = Command::new("pactl")
+        let volume_output = match Command::new("pactl")
             .args(["get-sink-volume", "@DEFAULT_SINK@"])
             .output()
-            .ok()?;
+        {
+            Ok(output) => {
+                if !output.status.success() {
+                    tracing::debug!(
+                        "pactl get-sink-volume failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                    return None;
+                }
+                output
+            }
+            Err(e) => {
+                tracing::debug!("Failed to execute pactl: {}", e);
+                return None;
+            }
+        };
 
         let volume_str = String::from_utf8_lossy(&volume_output.stdout);
         let volume_percent = Self::parse_volume(&volume_str).unwrap_or(0);
 
         // Get mute status
-        let mute_output = Command::new("pactl")
+        let mute_output = match Command::new("pactl")
             .args(["get-sink-mute", "@DEFAULT_SINK@"])
             .output()
-            .ok()?;
+        {
+            Ok(output) => {
+                if !output.status.success() {
+                    tracing::debug!(
+                        "pactl get-sink-mute failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                    return None;
+                }
+                output
+            }
+            Err(e) => {
+                tracing::debug!("Failed to execute pactl: {}", e);
+                return None;
+            }
+        };
 
         let mute_str = String::from_utf8_lossy(&mute_output.stdout);
         let muted = mute_str.contains("yes");

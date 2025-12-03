@@ -238,15 +238,26 @@ impl Host {
 
         tokio::spawn(async move {
             while new_title.next().await.is_some() {
-                if let Ok(proxy) = StatusNotifierItemProxy::builder(&connection_title)
+                let proxy = match StatusNotifierItemProxy::builder(&connection_title)
                     .destination(bus_name_title.as_str())
                     .and_then(|b| b.path(object_path_title.as_str()))
                 {
-                    if let Ok(proxy) = proxy.build().await {
-                        if let Ok(title) = proxy.title().await {
-                            cache_title.update_title(&service_title, title).await;
+                    Ok(builder) => match builder.build().await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            tracing::debug!("Failed to build proxy for {}: {}", service_title, e);
+                            continue;
                         }
+                    },
+                    Err(e) => {
+                        tracing::debug!("Failed to create proxy builder for {}: {}", service_title, e);
+                        continue;
                     }
+                };
+
+                match proxy.title().await {
+                    Ok(title) => cache_title.update_title(&service_title, title).await,
+                    Err(e) => tracing::debug!("Failed to fetch title for {}: {}", service_title, e),
                 }
             }
         });
@@ -261,18 +272,28 @@ impl Host {
 
         tokio::spawn(async move {
             while new_icon.next().await.is_some() {
-                if let Ok(proxy) = StatusNotifierItemProxy::builder(&connection_icon)
+                let proxy = match StatusNotifierItemProxy::builder(&connection_icon)
                     .destination(bus_name_icon.as_str())
                     .and_then(|b| b.path(object_path_icon.as_str()))
                 {
-                    if let Ok(proxy) = proxy.build().await {
-                        let icon_name = proxy.icon_name().await.ok();
-                        let (pixmap, width, height) = fetch_icon_pixmap(&proxy).await;
-                        cache_icon
-                            .update_icon(&service_icon, icon_name, pixmap, width, height)
-                            .await;
+                    Ok(builder) => match builder.build().await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            tracing::debug!("Failed to build proxy for {}: {}", service_icon, e);
+                            continue;
+                        }
+                    },
+                    Err(e) => {
+                        tracing::debug!("Failed to create proxy builder for {}: {}", service_icon, e);
+                        continue;
                     }
-                }
+                };
+
+                let icon_name = proxy.icon_name().await.ok();
+                let (pixmap, width, height) = fetch_icon_pixmap(&proxy).await;
+                cache_icon
+                    .update_icon(&service_icon, icon_name, pixmap, width, height)
+                    .await;
             }
         });
 
@@ -283,9 +304,14 @@ impl Host {
 
         tokio::spawn(async move {
             while let Some(signal) = new_status.next().await {
-                if let Ok(args) = signal.args() {
-                    let status = ItemStatus::from_str(&args.status);
-                    cache_status.update_status(&service_status, status).await;
+                match signal.args() {
+                    Ok(args) => {
+                        let status = ItemStatus::from_str(&args.status);
+                        cache_status.update_status(&service_status, status).await;
+                    }
+                    Err(e) => {
+                        tracing::debug!("Failed to parse status signal for {}: {}", service_status, e);
+                    }
                 }
             }
         });
@@ -300,15 +326,25 @@ impl Host {
 
         tokio::spawn(async move {
             while new_tooltip.next().await.is_some() {
-                if let Ok(proxy) = StatusNotifierItemProxy::builder(&connection_tooltip)
+                let proxy = match StatusNotifierItemProxy::builder(&connection_tooltip)
                     .destination(bus_name_tooltip.as_str())
                     .and_then(|b| b.path(object_path_tooltip.as_str()))
                 {
-                    if let Ok(proxy) = proxy.build().await {
-                        let tooltip = fetch_tooltip(&proxy).await;
-                        cache_tooltip.update_tooltip(&service_tooltip, tooltip).await;
+                    Ok(builder) => match builder.build().await {
+                        Ok(p) => p,
+                        Err(e) => {
+                            tracing::debug!("Failed to build proxy for {}: {}", service_tooltip, e);
+                            continue;
+                        }
+                    },
+                    Err(e) => {
+                        tracing::debug!("Failed to create proxy builder for {}: {}", service_tooltip, e);
+                        continue;
                     }
-                }
+                };
+
+                let tooltip = fetch_tooltip(&proxy).await;
+                cache_tooltip.update_tooltip(&service_tooltip, tooltip).await;
             }
         });
 
