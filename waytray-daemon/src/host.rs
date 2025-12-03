@@ -446,20 +446,32 @@ impl Host {
 /// Parse a service string into (bus_name, object_path)
 ///
 /// Service strings can be in several formats:
-/// - `:1.90/StatusNotifierItem` - unique bus name with path
-/// - `:1.75/org/ayatana/NotificationItem/spotify_client` - unique bus name with longer path
+/// - `:1.90/StatusNotifierItem` - unique bus name with path (no separator)
+/// - `:1.75:/org/ayatana/NotificationItem/spotify_client` - unique bus name with :/ separator
 /// - `org.kde.StatusNotifierItem-1234-1` - well-known name (default path)
 /// - `org.kde.StatusNotifierItem-1234-1:/StatusNotifierItem` - well-known name with path
 fn parse_service_string(service: &str) -> (String, String) {
     // Check if it starts with a unique bus name (colon followed by digits/dots)
     if service.starts_with(':') {
-        // Format: :1.90/path or :1.90:/path
-        // Find the first '/' to split bus name from path
+        // Unique bus name format
+        // Could be ":1.75/path" or ":1.75:/path" (with colon separator)
+
+        // Check for ":/" separator, skipping the initial ":" of the bus name
+        if let Some(sep_pos) = service[1..].find(":/") {
+            // Found ":/", so format is ":1.75:/path"
+            let actual_pos = 1 + sep_pos; // Position of ':' in the ":/"
+            let bus_name = &service[..actual_pos]; // ":1.75"
+            let path = &service[actual_pos + 1..]; // "/path" (skip ':' but keep '/')
+            return (bus_name.to_string(), path.to_string());
+        }
+
+        // No ":/", so format is ":1.75/path"
         if let Some(slash_pos) = service.find('/') {
             let bus_name = &service[..slash_pos];
             let path = &service[slash_pos..];
             return (bus_name.to_string(), path.to_string());
         }
+
         // No path, use default
         return (service.to_string(), "/StatusNotifierItem".to_string());
     }
@@ -591,4 +603,49 @@ pub async fn watch_name_changes(
     });
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_service_string_unique_name_with_colon_separator() {
+        // Spotify/Ayatana format: :1.75:/org/ayatana/NotificationItem/spotify_client
+        let (bus, path) = parse_service_string(":1.75:/org/ayatana/NotificationItem/spotify_client");
+        assert_eq!(bus, ":1.75");
+        assert_eq!(path, "/org/ayatana/NotificationItem/spotify_client");
+    }
+
+    #[test]
+    fn test_parse_service_string_unique_name_without_separator() {
+        // Standard format: :1.90/StatusNotifierItem
+        let (bus, path) = parse_service_string(":1.90/StatusNotifierItem");
+        assert_eq!(bus, ":1.90");
+        assert_eq!(path, "/StatusNotifierItem");
+    }
+
+    #[test]
+    fn test_parse_service_string_well_known_name_only() {
+        // Well-known name without path
+        let (bus, path) = parse_service_string("org.kde.StatusNotifierItem-1234-1");
+        assert_eq!(bus, "org.kde.StatusNotifierItem-1234-1");
+        assert_eq!(path, "/StatusNotifierItem");
+    }
+
+    #[test]
+    fn test_parse_service_string_well_known_with_path() {
+        // Well-known name with path separator
+        let (bus, path) = parse_service_string("org.kde.StatusNotifierItem-1234-1:/StatusNotifierItem");
+        assert_eq!(bus, "org.kde.StatusNotifierItem-1234-1");
+        assert_eq!(path, "/StatusNotifierItem");
+    }
+
+    #[test]
+    fn test_parse_service_string_unique_name_only() {
+        // Just a unique bus name, no path
+        let (bus, path) = parse_service_string(":1.42");
+        assert_eq!(bus, ":1.42");
+        assert_eq!(path, "/StatusNotifierItem");
+    }
 }
