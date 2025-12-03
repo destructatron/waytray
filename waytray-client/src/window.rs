@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use crate::daemon_proxy::DaemonClient;
+use crate::menu_popover::MenuPopover;
 use crate::module_item::ModuleItemWidget;
 use waytray_daemon::ModuleItem;
 
@@ -429,9 +430,37 @@ impl WayTrayWindow {
         // Get position hint (center of the widget)
         let (x, y) = self.get_widget_position(widget);
 
+        // Clone widget for async block
+        let widget_clone = widget.clone();
+        let item_id_clone = item_id.clone();
+
         glib::spawn_future_local(async move {
-            if let Err(e) = client.invoke_action(&item_id, "context_menu", x, y).await {
-                tracing::error!("Failed to show context menu for item {}: {}", item_id, e);
+            // Try to get menu items via DBusMenu
+            match client.get_item_menu(&item_id).await {
+                Ok(items) if !items.is_empty() => {
+                    // Show our custom popover menu
+                    tracing::debug!("Got {} menu items for {}", items.len(), item_id);
+                    let popover = MenuPopover::new();
+                    popover.set_parent(&widget_clone);
+                    popover.set_client(client.clone());
+                    popover.set_item_id(&item_id_clone);
+                    popover.set_menu_items(&items);
+                    popover.popup();
+                }
+                Ok(_) => {
+                    // Empty menu - try legacy SNI context_menu method
+                    tracing::debug!("Empty menu for {}, trying SNI fallback", item_id);
+                    if let Err(e) = client.invoke_action(&item_id, "context_menu", x, y).await {
+                        tracing::warn!("SNI context_menu failed for {}: {}", item_id, e);
+                    }
+                }
+                Err(e) => {
+                    // DBusMenu fetch failed - try legacy SNI context_menu method
+                    tracing::debug!("DBusMenu failed for {}: {}, trying SNI fallback", item_id, e);
+                    if let Err(e) = client.invoke_action(&item_id, "context_menu", x, y).await {
+                        tracing::warn!("SNI context_menu also failed for {}: {}", item_id, e);
+                    }
+                }
             }
         });
     }

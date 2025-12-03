@@ -165,6 +165,16 @@ pub trait Module: Send + Sync {
     /// Handle an action invocation on an item
     async fn invoke_action(&self, item_id: &str, action_id: &str, x: i32, y: i32);
 
+    /// Get menu items for a module item (only supported by tray module)
+    async fn get_menu_items(&self, _item_id: &str) -> anyhow::Result<Vec<crate::dbusmenu::MenuItem>> {
+        anyhow::bail!("Menu not supported by this module")
+    }
+
+    /// Activate a menu item (only supported by tray module)
+    async fn activate_menu_item(&self, _item_id: &str, _menu_item_id: i32) -> anyhow::Result<()> {
+        anyhow::bail!("Menu not supported by this module")
+    }
+
     /// Reload module configuration. Returns true if config was accepted.
     /// Default implementation does nothing (module doesn't support hot reload).
     async fn reload_config(&self, _config: &crate::config::Config) -> bool {
@@ -302,6 +312,44 @@ impl ModuleRegistry {
         }
 
         tracing::warn!("Module not found for item: {}", item_id);
+    }
+
+    /// Get menu items for a module item
+    pub async fn get_menu_items(&self, item_id: &str) -> anyhow::Result<Vec<crate::dbusmenu::MenuItem>> {
+        // Parse module name from item_id (format: "module:item")
+        let parts: Vec<&str> = item_id.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            anyhow::bail!("Invalid item_id format: {}", item_id);
+        }
+        let module_name = parts[0];
+
+        // Find the module and get menu items
+        for module in &self.modules {
+            if module.name() == module_name {
+                return module.get_menu_items(item_id).await;
+            }
+        }
+
+        anyhow::bail!("Module not found for item: {}", item_id)
+    }
+
+    /// Activate a menu item
+    pub async fn activate_menu_item(&self, item_id: &str, menu_item_id: i32) -> anyhow::Result<()> {
+        // Parse module name from item_id (format: "module:item")
+        let parts: Vec<&str> = item_id.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            anyhow::bail!("Invalid item_id format: {}", item_id);
+        }
+        let module_name = parts[0];
+
+        // Find the module and activate the menu item
+        for module in &self.modules {
+            if module.name() == module_name {
+                return module.activate_menu_item(item_id, menu_item_id).await;
+            }
+        }
+
+        anyhow::bail!("Module not found for item: {}", item_id)
     }
 
     /// Get list of registered modules

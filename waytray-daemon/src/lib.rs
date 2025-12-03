@@ -10,6 +10,7 @@ pub mod cache;
 pub mod config;
 pub mod config_watcher;
 pub mod dbus_service;
+pub mod dbusmenu;
 pub mod host;
 pub mod modules;
 pub mod notifications;
@@ -17,6 +18,7 @@ pub mod watcher;
 
 // Re-export commonly used types
 pub use config::Config;
+pub use dbusmenu::MenuItem;
 pub use modules::{ItemAction, Module, ModuleContext, ModuleEvent, ModuleInfo, ModuleItem, ModuleRegistry, Urgency};
 
 use serde::{Deserialize, Serialize};

@@ -5,6 +5,7 @@
 
 mod app;
 mod daemon_proxy;
+mod menu_popover;
 mod module_item;
 mod window;
 

@@ -42,6 +42,7 @@ The daemon uses a modular architecture configured via TOML:
 - **config.rs**: TOML configuration from `~/.config/waytray/config.toml` (auto-created with defaults)
 - **config_watcher.rs**: File watcher for config hot reload (uses `notify` crate)
 - **dbus_service.rs**: Exposes `org.waytray.Daemon` interface for clients
+- **dbusmenu.rs**: DBusMenu protocol (`com.canonical.dbusmenu`) for fetching/activating app menus
 - **notifications.rs**: Desktop notifications via freedesktop notification spec (notify-rust)
 - **watcher.rs**: Fallback StatusNotifierWatcher if none exists (e.g., from KDE/GNOME)
 - **host.rs**: StatusNotifierHost that receives tray items via D-Bus
@@ -76,8 +77,9 @@ Modules store config in `RwLock` to support hot reload when the config file chan
 GTK4 application providing an accessible panel window:
 
 - **main.rs**: Entry point, creates application and window
-- **daemon_client.rs**: D-Bus client for `org.waytray.Daemon` interface
+- **daemon_proxy.rs**: D-Bus client for `org.waytray.Daemon` interface
 - **module_item.rs**: `ModuleItemWidget` - GObject Box subclass with keyboard handling (Enter→Activate, Shift+F10/Menu→ContextMenu)
+- **menu_popover.rs**: GTK4 Popover for rendering DBusMenu context menus with accessibility support
 - **window.rs**: Main window with horizontal `gtk4::Box`, left/right arrow navigation, incremental updates to preserve accessibility state
 
 #### Accessibility
@@ -92,6 +94,7 @@ GTK4 application providing an accessible panel window:
 - `org.kde.StatusNotifierWatcher` - Standard SNI watcher (fallback provided)
 - `org.kde.StatusNotifierHost-{pid}` - Host registration
 - `org.kde.StatusNotifierItem` - Individual tray items from applications
+- `com.canonical.dbusmenu` - Application menus (used when SNI `ContextMenu` method unavailable)
 - `org.waytray.Daemon` - Custom interface for client-daemon IPC
 
 ### Key Implementation Details
@@ -104,6 +107,8 @@ GTK4 application providing an accessible panel window:
 **Icon handling**: Prefer `icon_name` (theme lookup) over `icon_pixmap` (ARGB32 binary data requiring conversion to RGBA for GTK).
 
 **Weather API**: Uses wttr.in with `curl` user agent (wttr.in blocks non-curl user agents). JSON endpoint includes both Celsius and Fahrenheit.
+
+**DBusMenu support**: Some apps (e.g., Steam) don't implement the SNI `ContextMenu(x, y)` method but expose menus via `com.canonical.dbusmenu`. The daemon fetches menus using `GetLayout` and activates items via `Event("clicked")`. Menu items are flattened (parent_id relationships) for D-Bus transport, then rendered as an accessible GTK4 Popover in the client. Falls back to SNI `ContextMenu` if DBusMenu fails.
 
 ## Configuration
 

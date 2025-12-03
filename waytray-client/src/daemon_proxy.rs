@@ -1,6 +1,6 @@
 //! D-Bus proxy for communicating with the daemon
 
-use waytray_daemon::dbus_service::{ModuleInfoDto, ModuleItemDto, TrayItemDto};
+use waytray_daemon::dbus_service::{MenuItemDto, ModuleInfoDto, ModuleItemDto, TrayItemDto};
 use waytray_daemon::{ModuleInfo, ModuleItem, TrayItem};
 use zbus::proxy;
 use zbus::Connection;
@@ -66,6 +66,16 @@ trait WayTrayDaemon {
     /// Signal emitted when module items change
     #[zbus(signal)]
     fn module_items_changed(&self, module_name: String) -> zbus::Result<()>;
+
+    // =========================================================================
+    // Menu API
+    // =========================================================================
+
+    /// Get menu items for a tray item via DBusMenu
+    fn get_item_menu(&self, item_id: &str) -> zbus::Result<Vec<MenuItemDto>>;
+
+    /// Activate a menu item by sending a "clicked" event
+    fn activate_menu_item(&self, item_id: &str, menu_item_id: i32) -> zbus::Result<()>;
 }
 
 /// Client for communicating with the WayTray daemon
@@ -160,5 +170,21 @@ impl DaemonClient {
             return Ok(args.module_name);
         }
         Ok(String::new())
+    }
+
+    // =========================================================================
+    // Menu API
+    // =========================================================================
+
+    /// Get menu items for a tray item via DBusMenu
+    pub async fn get_item_menu(&self, item_id: &str) -> anyhow::Result<Vec<MenuItemDto>> {
+        let items = self.proxy.get_item_menu(item_id).await?;
+        Ok(items)
+    }
+
+    /// Activate a menu item by sending a "clicked" event
+    pub async fn activate_menu_item(&self, item_id: &str, menu_item_id: i32) -> anyhow::Result<()> {
+        self.proxy.activate_menu_item(item_id, menu_item_id).await?;
+        Ok(())
     }
 }

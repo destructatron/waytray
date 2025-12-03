@@ -223,4 +223,36 @@ impl Module for TrayModule {
         tracing::debug!("Tray module config reloaded");
         true
     }
+
+    async fn get_menu_items(&self, item_id: &str) -> anyhow::Result<Vec<crate::dbusmenu::MenuItem>> {
+        // Parse the item ID - format is "tray:{original_id}"
+        let original_id = item_id
+            .strip_prefix("tray:")
+            .ok_or_else(|| anyhow::anyhow!("Invalid tray item ID: {}", item_id))?;
+
+        let host = self
+            .host
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Tray host not available"))?;
+
+        host.get_menu_items(original_id).await
+    }
+
+    async fn activate_menu_item(&self, item_id: &str, menu_item_id: i32) -> anyhow::Result<()> {
+        // Parse the item ID - format is "tray:{original_id}"
+        let original_id = item_id
+            .strip_prefix("tray:")
+            .ok_or_else(|| anyhow::anyhow!("Invalid tray item ID: {}", item_id))?;
+
+        let host = self
+            .host
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Tray host not available"))?;
+
+        host.activate_menu_item(original_id, menu_item_id).await
+    }
 }

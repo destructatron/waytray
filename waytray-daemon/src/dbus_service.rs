@@ -211,6 +211,49 @@ impl From<ModuleInfoDto> for ModuleInfo {
     }
 }
 
+/// Serializable version of MenuItem for D-Bus transport
+/// This is a flattened structure - submenus are represented by parent_id relationships
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Type)]
+pub struct MenuItemDto {
+    pub id: i32,
+    pub parent_id: i32,  // 0 for top-level items
+    pub label: String,
+    pub enabled: bool,
+    pub item_type: String,
+    pub icon_name: String,
+    pub toggle_type: String,
+    pub toggle_state: i32,
+    pub has_submenu: bool,
+}
+
+/// Flatten a MenuItem tree into a flat list of MenuItemDto
+pub fn flatten_menu_items(items: Vec<crate::dbusmenu::MenuItem>) -> Vec<MenuItemDto> {
+    let mut result = Vec::new();
+    flatten_recursive(&items, 0, &mut result);
+    result
+}
+
+fn flatten_recursive(items: &[crate::dbusmenu::MenuItem], parent_id: i32, result: &mut Vec<MenuItemDto>) {
+    for item in items {
+        result.push(MenuItemDto {
+            id: item.id,
+            parent_id,
+            label: item.label.clone(),
+            enabled: item.enabled,
+            item_type: item.item_type.clone(),
+            icon_name: item.icon_name.clone().unwrap_or_default(),
+            toggle_type: item.toggle_type.clone().unwrap_or_default(),
+            toggle_state: item.toggle_state,
+            has_submenu: !item.children.is_empty(),
+        });
+
+        // Recurse into children
+        if !item.children.is_empty() {
+            flatten_recursive(&item.children, item.id, result);
+        }
+    }
+}
+
 /// The main daemon D-Bus service
 pub struct DaemonService {
     /// Legacy cache for backwards compatibility
@@ -440,6 +483,40 @@ impl DaemonService {
         emitter: &SignalEmitter<'_>,
         module_name: &str,
     ) -> zbus::Result<()>;
+
+    /// Get menu items for a tray item via DBusMenu
+    async fn get_item_menu(&self, item_id: &str) -> zbus::fdo::Result<Vec<MenuItemDto>> {
+        tracing::debug!("GetItemMenu called for item: {}", item_id);
+
+        if let Some(ref registry) = self.registry {
+            let items = registry
+                .get_menu_items(item_id)
+                .await
+                .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+
+            Ok(flatten_menu_items(items))
+        } else {
+            Err(zbus::fdo::Error::InvalidArgs("Module API not available".to_string()))
+        }
+    }
+
+    /// Activate a menu item by sending a "clicked" event
+    async fn activate_menu_item(&self, item_id: &str, menu_item_id: i32) -> zbus::fdo::Result<()> {
+        tracing::debug!(
+            "ActivateMenuItem called: item={}, menu_item_id={}",
+            item_id,
+            menu_item_id
+        );
+
+        if let Some(ref registry) = self.registry {
+            registry
+                .activate_menu_item(item_id, menu_item_id)
+                .await
+                .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))
+        } else {
+            Err(zbus::fdo::Error::InvalidArgs("Module API not available".to_string()))
+        }
+    }
 }
 
 /// Start the daemon D-Bus service (legacy API)

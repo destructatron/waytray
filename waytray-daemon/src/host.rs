@@ -401,6 +401,46 @@ impl Host {
     pub fn connection(&self) -> &Connection {
         &self.connection
     }
+
+    /// Get menu items for a tray item via DBusMenu
+    pub async fn get_menu_items(
+        &self,
+        id: &str,
+    ) -> anyhow::Result<Vec<crate::dbusmenu::MenuItem>> {
+        let item = self
+            .cache
+            .get(id)
+            .await
+            .ok_or_else(|| anyhow::anyhow!("Item not found: {}", id))?;
+
+        let menu_path = item
+            .menu_path
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Item has no menu: {}", id))?;
+
+        crate::dbusmenu::fetch_menu(&self.connection, &item.bus_name, menu_path).await
+    }
+
+    /// Activate a menu item by sending a "clicked" event
+    pub async fn activate_menu_item(
+        &self,
+        id: &str,
+        menu_item_id: i32,
+    ) -> anyhow::Result<()> {
+        let item = self
+            .cache
+            .get(id)
+            .await
+            .ok_or_else(|| anyhow::anyhow!("Item not found: {}", id))?;
+
+        let menu_path = item
+            .menu_path
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Item has no menu: {}", id))?;
+
+        crate::dbusmenu::activate_menu_item(&self.connection, &item.bus_name, menu_path, menu_item_id)
+            .await
+    }
 }
 
 /// Parse a service string into (bus_name, object_path)
