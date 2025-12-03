@@ -196,8 +196,26 @@ impl MenuPopover {
 
         button.set_child(Some(&content));
 
-        // Set accessible properties
-        button.set_accessible_role(gtk4::AccessibleRole::MenuItem);
+        // Set accessible properties based on toggle type
+        if item.toggle_type == "radio" {
+            button.set_accessible_role(gtk4::AccessibleRole::MenuItemRadio);
+            let checked = match item.toggle_state {
+                1 => gtk4::AccessibleTristate::True,
+                0 => gtk4::AccessibleTristate::Mixed,
+                _ => gtk4::AccessibleTristate::False,
+            };
+            button.update_state(&[gtk4::accessible::State::Checked(checked)]);
+        } else if item.toggle_type == "checkmark" {
+            button.set_accessible_role(gtk4::AccessibleRole::MenuItemCheckbox);
+            let checked = match item.toggle_state {
+                1 => gtk4::AccessibleTristate::True,
+                0 => gtk4::AccessibleTristate::Mixed,
+                _ => gtk4::AccessibleTristate::False,
+            };
+            button.update_state(&[gtk4::accessible::State::Checked(checked)]);
+        } else {
+            button.set_accessible_role(gtk4::AccessibleRole::MenuItem);
+        }
         button.update_property(&[gtk4::accessible::Property::Label(&item.label)]);
 
         // Handle enabled state

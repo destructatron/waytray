@@ -56,7 +56,8 @@ The daemon uses a modular architecture configured via TOML:
 - **clock.rs**: Time display with configurable strftime format
 - **system.rs**: CPU/memory/temperature from `/proc/stat`, `/proc/meminfo`, `/sys/class/thermal`
 - **network.rs**: Network status and speeds from `/sys/class/net` and `/proc/net/route`
-- **pipewire.rs**: Audio volume control via PulseAudio/PipeWire (libpulse)
+- **pipewire.rs**: Audio volume control via PulseAudio/PipeWire (pactl)
+- **power_profiles.rs**: Power profile switching via power-profiles-daemon D-Bus
 - **weather.rs**: Weather via wttr.in API (no API key required)
 
 #### Module Trait
@@ -119,7 +120,7 @@ Config file: `~/.config/waytray/config.toml` (created automatically with default
 
 ```toml
 [modules]
-order = ["tray", "pipewire", "battery", "system", "network", "weather", "clock"]
+order = ["tray", "pipewire", "power_profiles", "battery", "system", "network", "weather", "clock"]
 
 [modules.tray]
 enabled = true
@@ -163,6 +164,9 @@ enabled = true
 show_volume = true      # Show volume percentage in label
 max_volume = 100        # Maximum volume (100 = normal, 150 = allow boost)
 scroll_step = 5         # Volume change per scroll step
+
+[modules.power_profiles]
+enabled = true          # Requires power-profiles-daemon
 
 [notifications]
 enabled = true

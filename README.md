@@ -113,7 +113,7 @@ WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the
 [modules]
 # Module display order (left to right)
 # Modules not listed appear after these
-order = ["tray", "pipewire", "battery", "system", "network", "weather", "clock"]
+order = ["tray", "pipewire", "power_profiles", "battery", "system", "network", "weather", "clock"]
 
 [modules.tray]
 enabled = true
@@ -154,6 +154,9 @@ enabled = true
 show_volume = true            # Show volume % in label
 max_volume = 100              # Cap volume (100 = normal, 150 = boost)
 scroll_step = 5               # Volume change per action
+
+[modules.power_profiles]
+enabled = true                # Requires power-profiles-daemon
 
 [notifications]
 enabled = true
@@ -268,6 +271,25 @@ Displays audio volume and mute status. Uses `pactl` to communicate with PulseAud
 
 **Requirements:** Requires `pactl` command (from `pulseaudio-utils` on Debian/Ubuntu or included with `pipewire-pulse`).
 
+#### Power Profiles (`[modules.power_profiles]`)
+
+Displays and controls system power profile via power-profiles-daemon. Allows switching between power-saver, balanced, and performance modes.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable/disable the power profiles module |
+
+**Display:**
+- Label: Current profile name (e.g., "Balanced")
+- Tooltip: Profile name, degraded reason (if any)
+- Icon: `power-profile-power-saver-symbolic`, `power-profile-balanced-symbolic`, or `power-profile-performance-symbolic`
+
+**Actions:**
+- Enter/Click: Cycle to next profile (Power Saver → Balanced → Performance → ...)
+- Individual profile actions available in context menu
+
+**Requirements:** Requires `power-profiles-daemon` to be installed and running. Available on most modern Linux distributions.
+
 ### Notifications (`[notifications]`)
 
 Global notification settings.
@@ -289,6 +311,7 @@ Global notification settings.
 │  │   ├─ System module (CPU/memory from /proc)           │
 │  │   ├─ Network module (interface stats from /sys)      │
 │  │   ├─ Pipewire module (audio volume via pactl)        │
+│  │   ├─ Power Profiles module (power-profiles-daemon)   │
 │  │   └─ Weather module (wttr.in API)                    │
 │  ├─ StatusNotifierWatcher (fallback if none exists)     │
 │  ├─ Notification service (desktop notifications)        │

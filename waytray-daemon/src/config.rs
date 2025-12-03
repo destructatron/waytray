@@ -33,6 +33,7 @@ pub struct ModulesConfig {
     pub network: Option<NetworkModuleConfig>,
     pub weather: Option<WeatherModuleConfig>,
     pub pipewire: Option<PipewireModuleConfig>,
+    pub power_profiles: Option<PowerProfilesModuleConfig>,
     #[serde(default)]
     pub scripts: Vec<ScriptModuleConfig>,
 }
@@ -48,6 +49,7 @@ impl Default for ModulesConfig {
             network: None,
             weather: None,
             pipewire: None,
+            power_profiles: None,
             scripts: Vec::new(),
         }
     }
@@ -217,6 +219,18 @@ impl Default for PipewireModuleConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct PowerProfilesModuleConfig {
+    pub enabled: bool,
+}
+
+impl Default for PowerProfilesModuleConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ScriptModuleConfig {
     /// Unique name for this script module
     pub name: String,
@@ -349,6 +363,10 @@ enabled = true
 # max_volume = 100        # Maximum volume (100 = normal, 150 = allow boost)
 # scroll_step = 5         # Volume change per scroll step
 
+# Uncomment to enable power profiles module (requires power-profiles-daemon)
+# [modules.power_profiles]
+# enabled = true
+
 [notifications]
 enabled = true
 timeout_ms = 5000
@@ -399,6 +417,11 @@ timeout_ms = 5000
         if let Some(ref pipewire) = self.modules.pipewire {
             if pipewire.enabled && !order.contains(&"pipewire".to_string()) {
                 order.push("pipewire".to_string());
+            }
+        }
+        if let Some(ref power_profiles) = self.modules.power_profiles {
+            if power_profiles.enabled && !order.contains(&"power_profiles".to_string()) {
+                order.push("power_profiles".to_string());
             }
         }
         for script in &self.modules.scripts {

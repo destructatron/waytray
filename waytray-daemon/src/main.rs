@@ -16,6 +16,7 @@ use waytray_daemon::modules::battery::BatteryModule;
 use waytray_daemon::modules::clock::ClockModule;
 use waytray_daemon::modules::network::NetworkModule;
 use waytray_daemon::modules::pipewire::PipewireModule;
+use waytray_daemon::modules::power_profiles::PowerProfilesModule;
 use waytray_daemon::modules::system::SystemModule;
 use waytray_daemon::modules::tray::TrayModule;
 use waytray_daemon::modules::weather::WeatherModule;
@@ -119,6 +120,15 @@ async fn main() -> anyhow::Result<()> {
             let pipewire_module = PipewireModule::new(pipewire_config.clone());
             registry.add_module(Arc::new(pipewire_module));
             tracing::info!("PipeWire module enabled");
+        }
+    }
+
+    // Add the power profiles module if enabled
+    if let Some(ref power_profiles_config) = config.modules.power_profiles {
+        if power_profiles_config.enabled {
+            let power_profiles_module = PowerProfilesModule::new(power_profiles_config.clone());
+            registry.add_module(Arc::new(power_profiles_module));
+            tracing::info!("Power profiles module enabled");
         }
     }
 
