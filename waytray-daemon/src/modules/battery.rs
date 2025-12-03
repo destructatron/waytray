@@ -121,28 +121,61 @@ fn ensure_gst_init() {
     }
 }
 
+/// Validate and expand a sound file path
+/// Returns None if the path is invalid or outside allowed directories
+fn validate_sound_path(path: &str) -> Option<String> {
+    let home = dirs::home_dir();
+
+    // Expand ~ to home directory
+    let expanded = if path.starts_with("~/") {
+        let home = home.as_ref()?;
+        home.join(&path[2..])
+    } else {
+        Path::new(path).to_path_buf()
+    };
+
+    // Canonicalize to resolve any .. or symlinks
+    let canonical = match expanded.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Cannot resolve sound path '{}': {}", path, e);
+            return None;
+        }
+    };
+
+    // Validate the path is within allowed directories:
+    // - User's home directory (for custom sounds)
+    // - /usr/share/sounds (system sounds)
+    // - /usr/local/share/sounds (local system sounds)
+    let allowed = if let Some(ref home) = home {
+        canonical.starts_with(home)
+    } else {
+        false
+    } || canonical.starts_with("/usr/share/sounds")
+      || canonical.starts_with("/usr/local/share/sounds");
+
+    if !allowed {
+        tracing::error!(
+            "Sound file path '{}' is outside allowed directories (home, /usr/share/sounds)",
+            path
+        );
+        return None;
+    }
+
+    Some(canonical.to_string_lossy().to_string())
+}
+
 /// Play a sound file using GStreamer (fire and forget)
 fn play_sound(path: &str) {
     ensure_gst_init();
 
-    // Expand ~ to home directory
-    let expanded_path = if path.starts_with("~/") {
-        if let Some(home) = dirs::home_dir() {
-            home.join(&path[2..]).to_string_lossy().to_string()
-        } else {
-            path.to_string()
-        }
-    } else {
-        path.to_string()
+    // Validate and expand the path (also handles path traversal prevention)
+    let expanded_path = match validate_sound_path(path) {
+        Some(p) => p,
+        None => return,
     };
 
-    // Verify file exists
-    if !Path::new(&expanded_path).exists() {
-        tracing::warn!("Sound file not found: {}", expanded_path);
-        return;
-    }
-
-    // Create playbin element
+    // Create playbin element - GStreamer will handle file not found errors
     let uri = format!("file://{}", expanded_path);
     let playbin = match gst::ElementFactory::make("playbin")
         .property("uri", &uri)

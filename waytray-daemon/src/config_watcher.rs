@@ -9,6 +9,11 @@ use tokio::sync::mpsc;
 use crate::config::Config as AppConfig;
 use crate::modules::ModuleRegistry;
 
+/// Maximum number of retries when loading config fails
+const MAX_LOAD_RETRIES: u32 = 3;
+/// Delay between retries (to allow editor to finish writing)
+const RETRY_DELAY_MS: u64 = 200;
+
 /// Watch the config file and reload modules when it changes
 pub async fn watch_config(
     config_path: impl AsRef<Path>,
@@ -63,14 +68,32 @@ pub async fn watch_config(
 
                     tracing::info!("Config file changed, reloading...");
 
-                    match AppConfig::load() {
-                        Ok(new_config) => {
-                            registry.reload_config(&new_config).await;
-                            tracing::info!("Config reloaded successfully");
+                    // Retry loading config in case the file is still being written
+                    let mut last_error = None;
+                    for attempt in 1..=MAX_LOAD_RETRIES {
+                        match AppConfig::load() {
+                            Ok(new_config) => {
+                                registry.reload_config(&new_config).await;
+                                tracing::info!("Config reloaded successfully");
+                                last_error = None;
+                                break;
+                            }
+                            Err(e) => {
+                                last_error = Some(e);
+                                if attempt < MAX_LOAD_RETRIES {
+                                    tracing::debug!(
+                                        "Config load attempt {} failed, retrying in {}ms",
+                                        attempt,
+                                        RETRY_DELAY_MS
+                                    );
+                                    tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS)).await;
+                                }
+                            }
                         }
-                        Err(e) => {
-                            tracing::error!("Failed to reload config: {}", e);
-                        }
+                    }
+
+                    if let Some(e) = last_error {
+                        tracing::error!("Failed to reload config after {} attempts: {}", MAX_LOAD_RETRIES, e);
                     }
                 }
             }
