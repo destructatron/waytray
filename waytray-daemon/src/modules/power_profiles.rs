@@ -101,6 +101,7 @@ impl Default for PowerProfilesState {
 pub struct PowerProfilesModule {
     config: RwLock<PowerProfilesModuleConfig>,
     connection: RwLock<Option<Connection>>,
+    ctx: RwLock<Option<Arc<ModuleContext>>>,
 }
 
 impl PowerProfilesModule {
@@ -108,6 +109,18 @@ impl PowerProfilesModule {
         Self {
             config: RwLock::new(config),
             connection: RwLock::new(None),
+            ctx: RwLock::new(None),
+        }
+    }
+
+    /// Send an immediate update to the client
+    async fn send_update(&self) {
+        let ctx_lock = self.ctx.read().await;
+        if let Some(ctx) = ctx_lock.as_ref() {
+            if let Some(state) = self.get_state().await {
+                let item = Self::create_module_item(&state);
+                ctx.send_items("power_profiles", vec![item]);
+            }
         }
     }
 
@@ -220,6 +233,9 @@ impl Module for PowerProfilesModule {
 
         *self.connection.write().await = Some(connection);
 
+        // Store context for use in invoke_action
+        *self.ctx.write().await = Some(ctx.clone());
+
         // Check if power-profiles-daemon is available
         let initial_state = match self.get_state().await {
             Some(state) => state,
@@ -257,20 +273,29 @@ impl Module for PowerProfilesModule {
     }
 
     async fn invoke_action(&self, _item_id: &str, action_id: &str, _x: i32, _y: i32) {
-        match action_id {
+        let changed = match action_id {
             "cycle" => {
                 // Cycle to next profile
                 if let Some(state) = self.get_state().await {
                     let next_profile = state.profile.next();
-                    self.set_profile(next_profile).await;
+                    self.set_profile(next_profile).await
+                } else {
+                    false
                 }
             }
             "context_menu" => {
                 // Context menu is handled via get_menu_items/activate_menu_item
+                false
             }
             _ => {
                 tracing::warn!("Unknown action: {}", action_id);
+                false
             }
+        };
+
+        // Immediately refresh the display after an action
+        if changed {
+            self.send_update().await;
         }
     }
 
@@ -312,7 +337,9 @@ impl Module for PowerProfilesModule {
             _ => anyhow::bail!("Unknown menu item id: {}", menu_item_id),
         };
 
-        self.set_profile(profile).await;
+        if self.set_profile(profile).await {
+            self.send_update().await;
+        }
         Ok(())
     }
 

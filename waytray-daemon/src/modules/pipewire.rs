@@ -33,12 +33,25 @@ impl Default for AudioState {
 /// PipeWire/PulseAudio module for volume control
 pub struct PipewireModule {
     config: RwLock<PipewireModuleConfig>,
+    ctx: RwLock<Option<Arc<ModuleContext>>>,
 }
 
 impl PipewireModule {
     pub fn new(config: PipewireModuleConfig) -> Self {
         Self {
             config: RwLock::new(config),
+            ctx: RwLock::new(None),
+        }
+    }
+
+    /// Send an immediate update to the client
+    async fn send_update(&self) {
+        let ctx_lock = self.ctx.read().await;
+        if let Some(ctx) = ctx_lock.as_ref() {
+            if let Some(state) = Self::get_audio_state() {
+                let item = self.create_module_item(&state).await;
+                ctx.send_items("pipewire", vec![item]);
+            }
         }
     }
 
@@ -204,6 +217,9 @@ impl Module for PipewireModule {
             return;
         }
 
+        // Store context for use in invoke_action
+        *self.ctx.write().await = Some(ctx.clone());
+
         // Get initial state
         let mut last_state = Self::get_audio_state().unwrap_or_default();
 
@@ -235,11 +251,12 @@ impl Module for PipewireModule {
     async fn invoke_action(&self, _item_id: &str, action_id: &str, _x: i32, _y: i32) {
         let config = self.config.read().await;
 
-        match action_id {
+        let action_performed = match action_id {
             "toggle_mute" => {
                 let _ = Command::new("pactl")
                     .args(["set-sink-mute", "@DEFAULT_SINK@", "toggle"])
-                    .spawn();
+                    .output(); // Use output() to wait for completion
+                true
             }
             "volume_up" => {
                 let step = config.scroll_step;
@@ -256,17 +273,26 @@ impl Module for PipewireModule {
 
                 let _ = Command::new("pactl")
                     .args(["set-sink-volume", "@DEFAULT_SINK@", &format!("+{}%", step)])
-                    .spawn();
+                    .output(); // Use output() to wait for completion
+                true
             }
             "volume_down" => {
                 let step = config.scroll_step;
                 let _ = Command::new("pactl")
                     .args(["set-sink-volume", "@DEFAULT_SINK@", &format!("-{}%", step)])
-                    .spawn();
+                    .output(); // Use output() to wait for completion
+                true
             }
             _ => {
                 tracing::warn!("Unknown action: {}", action_id);
+                false
             }
+        };
+
+        // Immediately refresh the display after an action
+        if action_performed {
+            drop(config); // Release the lock before send_update
+            self.send_update().await;
         }
     }
 
