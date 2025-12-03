@@ -122,19 +122,17 @@ fn ensure_gst_init() {
 }
 
 /// Validate and expand a sound file path
-/// Returns None if the path is invalid or outside allowed directories
+/// Returns None if the path is invalid or not a regular file
 fn validate_sound_path(path: &str) -> Option<String> {
-    let home = dirs::home_dir();
-
     // Expand ~ to home directory
     let expanded = if path.starts_with("~/") {
-        let home = home.as_ref()?;
+        let home = dirs::home_dir()?;
         home.join(&path[2..])
     } else {
         Path::new(path).to_path_buf()
     };
 
-    // Canonicalize to resolve any .. or symlinks
+    // Canonicalize to resolve any .. or symlinks (also verifies file exists)
     let canonical = match expanded.canonicalize() {
         Ok(p) => p,
         Err(e) => {
@@ -143,22 +141,9 @@ fn validate_sound_path(path: &str) -> Option<String> {
         }
     };
 
-    // Validate the path is within allowed directories:
-    // - User's home directory (for custom sounds)
-    // - /usr/share/sounds (system sounds)
-    // - /usr/local/share/sounds (local system sounds)
-    let allowed = if let Some(ref home) = home {
-        canonical.starts_with(home)
-    } else {
-        false
-    } || canonical.starts_with("/usr/share/sounds")
-      || canonical.starts_with("/usr/local/share/sounds");
-
-    if !allowed {
-        tracing::error!(
-            "Sound file path '{}' is outside allowed directories (home, /usr/share/sounds)",
-            path
-        );
+    // Ensure it's a regular file, not a directory or special file
+    if !canonical.is_file() {
+        tracing::warn!("Sound path '{}' is not a regular file", path);
         return None;
     }
 
