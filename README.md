@@ -22,19 +22,26 @@ WayTray implements the [StatusNotifierItem (SNI)](https://www.freedesktop.org/wi
 
 ### Build Dependencies
 
+WayTray is written in Rust. Install Rust and the required development libraries for your distribution:
+
 **Debian/Ubuntu:**
 ```bash
-sudo apt install build-essential pkg-config libgtk-4-dev libgstreamer1.0-dev
+sudo apt install rustc cargo build-essential pkg-config libgtk-4-dev libgstreamer1.0-dev
 ```
 
 **Fedora:**
 ```bash
-sudo dnf install gcc pkg-config gtk4-devel gstreamer1-devel
+sudo dnf install rust cargo gcc pkg-config gtk4-devel gstreamer1-devel
 ```
 
 **Arch:**
 ```bash
-sudo pacman -S base-devel gtk4 gstreamer
+sudo pacman -S rust base-devel gtk4 gstreamer
+```
+
+If the packaged Rust version doesn't work, install via [rustup](https://rustup.rs/) instead:
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 ### Runtime Dependencies
