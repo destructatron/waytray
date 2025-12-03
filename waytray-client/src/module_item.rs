@@ -43,6 +43,8 @@ mod imp {
                 vec![
                     Signal::builder("activate-item").build(),
                     Signal::builder("context-menu-item").build(),
+                    Signal::builder("scroll-up").build(),
+                    Signal::builder("scroll-down").build(),
                 ]
             })
         }
@@ -279,13 +281,16 @@ impl ModuleItemWidget {
 
     /// Check if this item has a context menu action
     pub fn has_context_menu(&self) -> bool {
+        self.has_action("context_menu")
+    }
+
+    /// Check if this item has a specific action
+    pub fn has_action(&self, action_id: &str) -> bool {
         self.imp()
             .item_data
             .borrow()
             .as_ref()
-            .map(|item| {
-                item.actions.iter().any(|a| a.id == "context_menu")
-            })
+            .map(|item| item.actions.iter().any(|a| a.id == action_id))
             .unwrap_or(false)
     }
 
@@ -308,6 +313,26 @@ impl ModuleItemWidget {
                 glib::Propagation::Stop
             }
 
+            // Up arrow: Scroll up / volume up action
+            gdk::Key::Up | gdk::Key::KP_Up => {
+                if self.has_action("volume_up") {
+                    self.emit_by_name::<()>("scroll-up", &[]);
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
+            }
+
+            // Down arrow: Scroll down / volume down action
+            gdk::Key::Down | gdk::Key::KP_Down => {
+                if self.has_action("volume_down") {
+                    self.emit_by_name::<()>("scroll-down", &[]);
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
+            }
+
             _ => glib::Propagation::Proceed,
         }
     }
@@ -324,6 +349,24 @@ impl ModuleItemWidget {
     /// Connect to the context-menu-item signal
     pub fn connect_context_menu_item<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
         self.connect_local("context-menu-item", false, move |values| {
+            let obj = values[0].get::<ModuleItemWidget>().unwrap();
+            f(&obj);
+            None
+        })
+    }
+
+    /// Connect to the scroll-up signal
+    pub fn connect_scroll_up<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_local("scroll-up", false, move |values| {
+            let obj = values[0].get::<ModuleItemWidget>().unwrap();
+            f(&obj);
+            None
+        })
+    }
+
+    /// Connect to the scroll-down signal
+    pub fn connect_scroll_down<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_local("scroll-down", false, move |values| {
             let obj = values[0].get::<ModuleItemWidget>().unwrap();
             f(&obj);
             None

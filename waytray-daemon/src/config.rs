@@ -32,6 +32,7 @@ pub struct ModulesConfig {
     pub system: Option<SystemModuleConfig>,
     pub network: Option<NetworkModuleConfig>,
     pub weather: Option<WeatherModuleConfig>,
+    pub pipewire: Option<PipewireModuleConfig>,
     #[serde(default)]
     pub scripts: Vec<ScriptModuleConfig>,
 }
@@ -46,6 +47,7 @@ impl Default for ModulesConfig {
             system: None,
             network: None,
             weather: None,
+            pipewire: None,
             scripts: Vec::new(),
         }
     }
@@ -192,6 +194,29 @@ impl Default for WeatherModuleConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct PipewireModuleConfig {
+    pub enabled: bool,
+    /// Show volume percentage in label
+    pub show_volume: bool,
+    /// Maximum volume percentage (100 = normal, 150 = allow boost)
+    pub max_volume: u32,
+    /// Volume step for scroll adjustment (percentage)
+    pub scroll_step: u32,
+}
+
+impl Default for PipewireModuleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            show_volume: true,
+            max_volume: 100,
+            scroll_step: 5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ScriptModuleConfig {
     /// Unique name for this script module
     pub name: String,
@@ -317,6 +342,13 @@ enabled = true
 # show_speed = true
 # interval_seconds = 2
 
+# Uncomment to enable pipewire/pulseaudio volume module
+# [modules.pipewire]
+# enabled = true
+# show_volume = true      # Show volume percentage in label
+# max_volume = 100        # Maximum volume (100 = normal, 150 = allow boost)
+# scroll_step = 5         # Volume change per scroll step
+
 [notifications]
 enabled = true
 timeout_ms = 5000
@@ -362,6 +394,11 @@ timeout_ms = 5000
         if let Some(ref network) = self.modules.network {
             if network.enabled && !order.contains(&"network".to_string()) {
                 order.push("network".to_string());
+            }
+        }
+        if let Some(ref pipewire) = self.modules.pipewire {
+            if pipewire.enabled && !order.contains(&"pipewire".to_string()) {
+                order.push("pipewire".to_string());
             }
         }
         for script in &self.modules.scripts {

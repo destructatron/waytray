@@ -236,6 +236,16 @@ impl WayTrayWindow {
                     window.show_context_menu(widget);
                 });
 
+                let window = self.clone();
+                widget.connect_scroll_up(move |widget| {
+                    window.invoke_item_action(widget, "volume_up");
+                });
+
+                let window = self.clone();
+                widget.connect_scroll_down(move |widget| {
+                    window.invoke_item_action(widget, "volume_down");
+                });
+
                 imp.items_box.append(&widget);
             }
         }
@@ -402,6 +412,27 @@ impl WayTrayWindow {
 
         // Get position hint (center of the widget)
         let (x, y) = self.get_widget_position(widget);
+
+        glib::spawn_future_local(async move {
+            if let Err(e) = client.invoke_action(&item_id, &action_id, x, y).await {
+                tracing::error!("Failed to invoke action {} on {}: {}", action_id, item_id, e);
+            }
+        });
+    }
+
+    /// Invoke a specific action on a module item
+    fn invoke_item_action(&self, widget: &ModuleItemWidget, action_id: &str) {
+        let Some(item_id) = widget.item_id() else {
+            return;
+        };
+
+        let client = self.imp().client.borrow().clone();
+        let Some(client) = client else {
+            return;
+        };
+
+        let (x, y) = self.get_widget_position(widget);
+        let action_id = action_id.to_string();
 
         glib::spawn_future_local(async move {
             if let Err(e) = client.invoke_action(&item_id, &action_id, x, y).await {

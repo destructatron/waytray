@@ -41,6 +41,7 @@ sudo pacman -S base-devel gtk4 gstreamer
 
 - GTK4
 - A D-Bus session bus (standard on most Linux desktops)
+- `pactl` for pipewire module (from `pulseaudio-utils` or `pipewire-pulse`)
 
 ## Building
 
@@ -112,7 +113,7 @@ WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the
 [modules]
 # Module display order (left to right)
 # Modules not listed appear after these
-order = ["tray", "battery", "system", "network", "weather", "clock"]
+order = ["tray", "pipewire", "battery", "system", "network", "weather", "clock"]
 
 [modules.tray]
 enabled = true
@@ -147,6 +148,12 @@ interface = ""                # Empty = auto-detect default route
 show_ip = false
 show_speed = true
 interval_seconds = 2
+
+[modules.pipewire]
+enabled = true
+show_volume = true            # Show volume % in label
+max_volume = 100              # Cap volume (100 = normal, 150 = boost)
+scroll_step = 5               # Volume change per action
 
 [notifications]
 enabled = true
@@ -239,6 +246,28 @@ Displays network connection status and transfer speeds. Reads from `/sys/class/n
 - Tooltip: Interface name, IP address, speeds
 - Icon: `network-wireless`, `network-wired`, or `network-offline` based on interface type and status
 
+#### Pipewire (`[modules.pipewire]`)
+
+Displays audio volume and mute status. Uses `pactl` to communicate with PulseAudio or PipeWire (via pipewire-pulse).
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable/disable the pipewire module |
+| `show_volume` | bool | `true` | Show volume percentage in label |
+| `max_volume` | u32 | `100` | Maximum volume cap (100 = normal, up to 150 for boost) |
+| `scroll_step` | u32 | `5` | Volume change percentage per action |
+
+**Display:**
+- Label: Volume percentage (e.g., "75%") or "Muted"
+- Tooltip: Volume %, mute status, output device name
+- Icon: `audio-volume-muted`, `audio-volume-low`, `audio-volume-medium`, or `audio-volume-high`
+
+**Actions:**
+- Enter/Click: Toggle mute
+- Up/Down arrows: Adjust volume when focused on this module
+
+**Requirements:** Requires `pactl` command (from `pulseaudio-utils` on Debian/Ubuntu or included with `pipewire-pulse`).
+
 ### Notifications (`[notifications]`)
 
 Global notification settings.
@@ -259,6 +288,7 @@ Global notification settings.
 │  │   ├─ Clock module (time display)                     │
 │  │   ├─ System module (CPU/memory from /proc)           │
 │  │   ├─ Network module (interface stats from /sys)      │
+│  │   ├─ Pipewire module (audio volume via pactl)        │
 │  │   └─ Weather module (wttr.in API)                    │
 │  ├─ StatusNotifierWatcher (fallback if none exists)     │
 │  ├─ Notification service (desktop notifications)        │

@@ -14,9 +14,10 @@ use waytray_daemon::config_watcher;
 use waytray_daemon::dbus_service;
 use waytray_daemon::modules::battery::BatteryModule;
 use waytray_daemon::modules::clock::ClockModule;
+use waytray_daemon::modules::network::NetworkModule;
+use waytray_daemon::modules::pipewire::PipewireModule;
 use waytray_daemon::modules::system::SystemModule;
 use waytray_daemon::modules::tray::TrayModule;
-use waytray_daemon::modules::network::NetworkModule;
 use waytray_daemon::modules::weather::WeatherModule;
 use waytray_daemon::modules::ModuleRegistry;
 use waytray_daemon::notifications::NotificationService;
@@ -109,6 +110,15 @@ async fn main() -> anyhow::Result<()> {
             let network_module = NetworkModule::new(network_config.clone());
             registry.add_module(Arc::new(network_module));
             tracing::info!("Network module enabled");
+        }
+    }
+
+    // Add the pipewire module if enabled
+    if let Some(ref pipewire_config) = config.modules.pipewire {
+        if pipewire_config.enabled {
+            let pipewire_module = PipewireModule::new(pipewire_config.clone());
+            registry.add_module(Arc::new(pipewire_module));
+            tracing::info!("PipeWire module enabled");
         }
     }
 

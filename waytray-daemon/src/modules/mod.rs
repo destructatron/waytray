@@ -1,6 +1,7 @@
 pub mod battery;
 pub mod clock;
 pub mod network;
+pub mod pipewire;
 pub mod system;
 pub mod tray;
 pub mod weather;
