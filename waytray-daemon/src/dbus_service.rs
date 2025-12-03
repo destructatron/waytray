@@ -445,6 +445,7 @@ impl DaemonService {
         if let Some(ref registry) = self.registry {
             registry
                 .get_modules()
+                .await
                 .into_iter()
                 .map(ModuleInfoDto::from)
                 .collect()

@@ -432,12 +432,15 @@ impl Module for BatteryModule {
         let poll_interval = Duration::from_secs(30);
 
         loop {
-            tokio::time::sleep(poll_interval).await;
-
-            if let Some((percentage, state, time_remaining)) = self.get_battery_info().await {
-                let item = self.create_module_item(percentage, state, time_remaining).await;
-                ctx.send_items("battery", vec![item]);
-                self.check_and_send_notifications(&ctx, percentage, state).await;
+            tokio::select! {
+                _ = ctx.cancelled() => break,
+                _ = tokio::time::sleep(poll_interval) => {
+                    if let Some((percentage, state, time_remaining)) = self.get_battery_info().await {
+                        let item = self.create_module_item(percentage, state, time_remaining).await;
+                        ctx.send_items("battery", vec![item]);
+                        self.check_and_send_notifications(&ctx, percentage, state).await;
+                    }
+                }
             }
         }
     }

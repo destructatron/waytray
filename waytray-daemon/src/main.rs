@@ -4,6 +4,7 @@
 //! a D-Bus interface for clients.
 //!
 //! The daemon now supports a modular architecture configured via TOML.
+//! Modules can be dynamically loaded and unloaded based on configuration changes.
 
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
@@ -57,88 +58,16 @@ async fn main() -> anyhow::Result<()> {
 
     // Create the module registry with configured order
     let module_order = config.module_order();
-    let mut registry = ModuleRegistry::new(module_order, notification_service);
+    let mut registry = ModuleRegistry::new(module_order, notification_service, connection.clone());
 
-    // Add the tray module if enabled
-    if config.modules.tray.enabled {
-        let tray_module = TrayModule::new(
-            config.modules.tray.clone(),
-            connection.clone(),
-        );
-        registry.add_module(Arc::new(tray_module));
-        tracing::info!("Tray module enabled");
-    }
-
-    // Add the battery module if enabled
-    if let Some(ref battery_config) = config.modules.battery {
-        if battery_config.enabled {
-            let battery_module = BatteryModule::new(battery_config.clone());
-            registry.add_module(Arc::new(battery_module));
-            tracing::info!("Battery module enabled");
-        }
-    }
-
-    // Add the clock module if enabled
-    if let Some(ref clock_config) = config.modules.clock {
-        if clock_config.enabled {
-            let clock_module = ClockModule::new(clock_config.clone());
-            registry.add_module(Arc::new(clock_module));
-            tracing::info!("Clock module enabled");
-        }
-    }
-
-    // Add the system module if enabled
-    if let Some(ref system_config) = config.modules.system {
-        if system_config.enabled {
-            let system_module = SystemModule::new(system_config.clone());
-            registry.add_module(Arc::new(system_module));
-            tracing::info!("System module enabled");
-        }
-    }
-
-    // Add the weather module if enabled
-    if let Some(ref weather_config) = config.modules.weather {
-        if weather_config.enabled {
-            let weather_module = WeatherModule::new(weather_config.clone());
-            registry.add_module(Arc::new(weather_module));
-            tracing::info!("Weather module enabled");
-        }
-    }
-
-    // Add the network module if enabled
-    if let Some(ref network_config) = config.modules.network {
-        if network_config.enabled {
-            let network_module = NetworkModule::new(network_config.clone());
-            registry.add_module(Arc::new(network_module));
-            tracing::info!("Network module enabled");
-        }
-    }
-
-    // Add the pipewire module if enabled
-    if let Some(ref pipewire_config) = config.modules.pipewire {
-        if pipewire_config.enabled {
-            let pipewire_module = PipewireModule::new(pipewire_config.clone());
-            registry.add_module(Arc::new(pipewire_module));
-            tracing::info!("PipeWire module enabled");
-        }
-    }
-
-    // Add the power profiles module if enabled
-    if let Some(ref power_profiles_config) = config.modules.power_profiles {
-        if power_profiles_config.enabled {
-            let power_profiles_module = PowerProfilesModule::new(power_profiles_config.clone());
-            registry.add_module(Arc::new(power_profiles_module));
-            tracing::info!("Power profiles module enabled");
-        }
-    }
-
-    // TODO: Add script modules when implemented
+    // Register module factories
+    register_module_factories(&mut registry);
 
     // Wrap registry in Arc for sharing
     let registry = Arc::new(registry);
 
-    // Start all modules
-    registry.start().await;
+    // Start all enabled modules
+    registry.start(&config).await;
     tracing::info!("All modules started");
 
     // Start the daemon D-Bus service for clients
@@ -157,4 +86,120 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Shutting down WayTray daemon");
     Ok(())
+}
+
+/// Register all module factories with the registry
+fn register_module_factories(registry: &mut ModuleRegistry) {
+    // Tray module factory
+    registry.register_factory(
+        "tray",
+        Box::new(|config, connection| {
+            if config.modules.tray.enabled {
+                Some(Arc::new(TrayModule::new(
+                    config.modules.tray.clone(),
+                    connection.clone(),
+                )))
+            } else {
+                None
+            }
+        }),
+    );
+
+    // Battery module factory
+    registry.register_factory(
+        "battery",
+        Box::new(|config, _connection| {
+            config.modules.battery.as_ref().and_then(|c| {
+                if c.enabled {
+                    Some(Arc::new(BatteryModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                } else {
+                    None
+                }
+            })
+        }),
+    );
+
+    // Clock module factory
+    registry.register_factory(
+        "clock",
+        Box::new(|config, _connection| {
+            config.modules.clock.as_ref().and_then(|c| {
+                if c.enabled {
+                    Some(Arc::new(ClockModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                } else {
+                    None
+                }
+            })
+        }),
+    );
+
+    // System module factory
+    registry.register_factory(
+        "system",
+        Box::new(|config, _connection| {
+            config.modules.system.as_ref().and_then(|c| {
+                if c.enabled {
+                    Some(Arc::new(SystemModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                } else {
+                    None
+                }
+            })
+        }),
+    );
+
+    // Network module factory
+    registry.register_factory(
+        "network",
+        Box::new(|config, _connection| {
+            config.modules.network.as_ref().and_then(|c| {
+                if c.enabled {
+                    Some(Arc::new(NetworkModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                } else {
+                    None
+                }
+            })
+        }),
+    );
+
+    // Weather module factory
+    registry.register_factory(
+        "weather",
+        Box::new(|config, _connection| {
+            config.modules.weather.as_ref().and_then(|c| {
+                if c.enabled {
+                    Some(Arc::new(WeatherModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                } else {
+                    None
+                }
+            })
+        }),
+    );
+
+    // Pipewire module factory
+    registry.register_factory(
+        "pipewire",
+        Box::new(|config, _connection| {
+            config.modules.pipewire.as_ref().and_then(|c| {
+                if c.enabled {
+                    Some(Arc::new(PipewireModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                } else {
+                    None
+                }
+            })
+        }),
+    );
+
+    // Power profiles module factory
+    registry.register_factory(
+        "power_profiles",
+        Box::new(|config, _connection| {
+            config.modules.power_profiles.as_ref().and_then(|c| {
+                if c.enabled {
+                    Some(Arc::new(PowerProfilesModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                } else {
+                    None
+                }
+            })
+        }),
+    );
 }

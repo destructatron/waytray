@@ -141,40 +141,46 @@ impl Module for TrayModule {
 
         // Subscribe to cache events and forward them to the module context
         let mut receiver = self.cache.subscribe();
-        let cache = self.cache.clone();
 
-        tokio::spawn(async move {
-            loop {
-                match receiver.recv().await {
-                    Ok(_event) => {
-                        // Get all items and convert to module items
-                        let tray_items = cache.get_all().await;
-                        let module_items: Vec<ModuleItem> = tray_items
-                            .iter()
-                            .map(TrayModule::tray_item_to_module_item)
-                            .collect();
+        tracing::info!("Tray module started");
 
-                        ctx.send_items("tray", module_items);
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!("Tray module lagged by {} events", n);
-                        // Resync by getting all items
-                        let tray_items = cache.get_all().await;
-                        let module_items: Vec<ModuleItem> = tray_items
-                            .iter()
-                            .map(TrayModule::tray_item_to_module_item)
-                            .collect();
-                        ctx.send_items("tray", module_items);
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        tracing::info!("Tray module cache channel closed");
-                        break;
+        // Run event loop directly (not spawned) so start() doesn't return
+        loop {
+            tokio::select! {
+                _ = ctx.cancelled() => {
+                    tracing::debug!("Tray module event loop cancelled");
+                    break;
+                }
+                result = receiver.recv() => {
+                    match result {
+                        Ok(_event) => {
+                            // Get all items and convert to module items
+                            let tray_items = self.cache.get_all().await;
+                            let module_items: Vec<ModuleItem> = tray_items
+                                .iter()
+                                .map(TrayModule::tray_item_to_module_item)
+                                .collect();
+
+                            ctx.send_items("tray", module_items);
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!("Tray module lagged by {} events", n);
+                            // Resync by getting all items
+                            let tray_items = self.cache.get_all().await;
+                            let module_items: Vec<ModuleItem> = tray_items
+                                .iter()
+                                .map(TrayModule::tray_item_to_module_item)
+                                .collect();
+                            ctx.send_items("tray", module_items);
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            tracing::info!("Tray module cache channel closed");
+                            break;
+                        }
                     }
                 }
             }
-        });
-
-        tracing::info!("Tray module started");
+        }
     }
 
     async fn stop(&self) {

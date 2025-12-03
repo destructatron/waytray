@@ -267,12 +267,15 @@ impl Module for NetworkModule {
             let _ = self.get_traffic_bytes(&interface).await;
         }
 
-        // Wait a moment for first delta
+        // Wait a moment for first delta (cancellable)
         let interval = {
             let config = self.config.read().await;
             Duration::from_secs(config.interval_seconds)
         };
-        tokio::time::sleep(interval).await;
+        tokio::select! {
+            _ = ctx.cancelled() => return,
+            _ = tokio::time::sleep(interval) => {}
+        }
 
         // Send initial items
         let items = self.create_items().await;
@@ -285,10 +288,13 @@ impl Module for NetworkModule {
                 Duration::from_secs(config.interval_seconds)
             };
 
-            tokio::time::sleep(interval).await;
-
-            let items = self.create_items().await;
-            ctx.send_items("network", items);
+            tokio::select! {
+                _ = ctx.cancelled() => break,
+                _ = tokio::time::sleep(interval) => {
+                    let items = self.create_items().await;
+                    ctx.send_items("network", items);
+                }
+            }
         }
     }
 

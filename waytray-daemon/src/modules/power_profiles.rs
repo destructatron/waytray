@@ -255,13 +255,16 @@ impl Module for PowerProfilesModule {
         let mut last_state = initial_state;
 
         loop {
-            tokio::time::sleep(poll_interval).await;
-
-            if let Some(current_state) = self.get_state().await {
-                if current_state != last_state {
-                    let item = Self::create_module_item(&current_state);
-                    ctx.send_items("power_profiles", vec![item]);
-                    last_state = current_state;
+            tokio::select! {
+                _ = ctx.cancelled() => break,
+                _ = tokio::time::sleep(poll_interval) => {
+                    if let Some(current_state) = self.get_state().await {
+                        if current_state != last_state {
+                            let item = Self::create_module_item(&current_state);
+                            ctx.send_items("power_profiles", vec![item]);
+                            last_state = current_state;
+                        }
+                    }
                 }
             }
         }

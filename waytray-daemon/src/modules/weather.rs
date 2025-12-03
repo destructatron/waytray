@@ -231,11 +231,14 @@ impl Module for WeatherModule {
                 Duration::from_secs(config.interval_seconds)
             };
 
-            tokio::time::sleep(interval).await;
-
-            if let Some(data) = self.fetch_weather().await {
-                if let Some(item) = self.create_module_item(&data).await {
-                    ctx.send_items("weather", vec![item]);
+            tokio::select! {
+                _ = ctx.cancelled() => break,
+                _ = tokio::time::sleep(interval) => {
+                    if let Some(data) = self.fetch_weather().await {
+                        if let Some(item) = self.create_module_item(&data).await {
+                            ctx.send_items("weather", vec![item]);
+                        }
+                    }
                 }
             }
         }

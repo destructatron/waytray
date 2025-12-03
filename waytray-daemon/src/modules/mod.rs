@@ -8,9 +8,10 @@ pub mod tray;
 pub mod weather;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
+use tokio_util::sync::CancellationToken;
 
 /// A module item that can be displayed in the panel
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,15 +122,17 @@ pub enum ModuleEvent {
     ConfigReloaded,
 }
 
-/// Context provided to modules for communication
+/// Context provided to modules for communication and lifecycle management
 pub struct ModuleContext {
     pub event_sender: broadcast::Sender<ModuleEvent>,
+    cancellation_token: CancellationToken,
 }
 
 impl ModuleContext {
-    pub fn new(sender: broadcast::Sender<ModuleEvent>) -> Self {
+    pub fn new(sender: broadcast::Sender<ModuleEvent>, cancellation_token: CancellationToken) -> Self {
         Self {
             event_sender: sender,
+            cancellation_token,
         }
     }
 
@@ -146,6 +149,21 @@ impl ModuleContext {
             body: body.to_string(),
             urgency,
         });
+    }
+
+    /// Check if the module should stop
+    pub fn is_cancelled(&self) -> bool {
+        self.cancellation_token.is_cancelled()
+    }
+
+    /// Get a future that completes when the module should stop
+    pub async fn cancelled(&self) {
+        self.cancellation_token.cancelled().await
+    }
+
+    /// Get a clone of the cancellation token for use in nested tasks
+    pub fn cancellation_token(&self) -> CancellationToken {
+        self.cancellation_token.clone()
     }
 }
 
@@ -184,51 +202,70 @@ pub trait Module: Send + Sync {
     }
 }
 
+use crate::config::Config;
 use crate::notifications::NotificationService;
+
+/// A running module with its cancellation token
+struct RunningModule {
+    module: Arc<dyn Module>,
+    cancellation_token: CancellationToken,
+}
+
+/// Factory function type for creating modules
+pub type ModuleFactory = Box<dyn Fn(&Config, &zbus::Connection) -> Option<Arc<dyn Module>> + Send + Sync>;
 
 /// Registry that manages all modules and their items
 pub struct ModuleRegistry {
-    modules: Vec<Arc<dyn Module>>,
+    /// Running modules indexed by name
+    running_modules: RwLock<HashMap<String, RunningModule>>,
+    /// Module factories indexed by name
+    module_factories: HashMap<String, ModuleFactory>,
+    /// Module display order
     module_order: RwLock<Vec<String>>,
+    /// Cached items from modules
     items: Arc<RwLock<HashMap<String, Vec<ModuleItem>>>>,
+    /// Event sender for module communication
     event_sender: broadcast::Sender<ModuleEvent>,
+    /// Notification service
     notification_service: Arc<NotificationService>,
+    /// D-Bus connection (needed for tray module)
+    connection: zbus::Connection,
 }
 
 impl ModuleRegistry {
-    pub fn new(module_order: Vec<String>, notification_service: NotificationService) -> Self {
+    pub fn new(
+        module_order: Vec<String>,
+        notification_service: NotificationService,
+        connection: zbus::Connection,
+    ) -> Self {
         let (sender, _) = broadcast::channel(64);
         Self {
-            modules: Vec::new(),
+            running_modules: RwLock::new(HashMap::new()),
+            module_factories: HashMap::new(),
             module_order: RwLock::new(module_order),
             items: Arc::new(RwLock::new(HashMap::new())),
             event_sender: sender,
             notification_service: Arc::new(notification_service),
+            connection,
         }
     }
 
-    /// Add a module to the registry
-    pub fn add_module(&mut self, module: Arc<dyn Module>) {
-        self.modules.push(module);
+    /// Register a module factory
+    pub fn register_factory(&mut self, name: &str, factory: ModuleFactory) {
+        self.module_factories.insert(name.to_string(), factory);
     }
 
-    /// Start all enabled modules and begin listening for events
-    pub async fn start(&self) {
-        let ctx = Arc::new(ModuleContext::new(self.event_sender.clone()));
+    /// Start the event listener and initial modules based on config
+    pub async fn start(&self, config: &Config) {
+        // Start the event listener
+        self.start_event_listener();
 
-        // Start all enabled modules
-        for module in &self.modules {
-            if module.enabled() {
-                tracing::info!("Starting module: {}", module.name());
-                let module = module.clone();
-                let ctx = ctx.clone();
-                tokio::spawn(async move {
-                    module.start(ctx).await;
-                });
-            }
-        }
+        // Start modules based on config
+        self.sync_modules_with_config(config).await;
+    }
 
-        // Listen for module events and update items
+    /// Start the event listener that handles module events
+    fn start_event_listener(&self) {
         let items = self.items.clone();
         let notification_service = self.notification_service.clone();
         let mut receiver = self.event_sender.subscribe();
@@ -256,6 +293,173 @@ impl ModuleRegistry {
                 }
             }
         });
+    }
+
+    /// Start a single module by name
+    async fn start_module(&self, name: &str, config: &Config) -> bool {
+        // Check if already running
+        {
+            let running = self.running_modules.read().await;
+            if running.contains_key(name) {
+                tracing::debug!("Module {} is already running", name);
+                return false;
+            }
+        }
+
+        // Create the module using its factory
+        let module = match self.module_factories.get(name) {
+            Some(factory) => match factory(config, &self.connection) {
+                Some(m) => m,
+                None => {
+                    tracing::debug!("Factory returned None for module {}", name);
+                    return false;
+                }
+            },
+            None => {
+                tracing::warn!("No factory registered for module {}", name);
+                return false;
+            }
+        };
+
+        // Create cancellation token and context
+        let cancellation_token = CancellationToken::new();
+        let ctx = Arc::new(ModuleContext::new(
+            self.event_sender.clone(),
+            cancellation_token.clone(),
+        ));
+
+        // Store the running module
+        {
+            let mut running = self.running_modules.write().await;
+            running.insert(
+                name.to_string(),
+                RunningModule {
+                    module: module.clone(),
+                    cancellation_token,
+                },
+            );
+        }
+
+        // Start the module in a background task
+        let module_name = name.to_string();
+        tokio::spawn(async move {
+            tracing::info!("Starting module: {}", module_name);
+            module.start(ctx).await;
+            tracing::info!("Module {} has stopped", module_name);
+        });
+
+        true
+    }
+
+    /// Stop a single module by name
+    async fn stop_module(&self, name: &str) -> bool {
+        let running_module = {
+            let mut running = self.running_modules.write().await;
+            running.remove(name)
+        };
+
+        if let Some(rm) = running_module {
+            tracing::info!("Stopping module: {}", name);
+
+            // Signal the module to stop
+            rm.cancellation_token.cancel();
+
+            // Call the module's stop method for cleanup
+            rm.module.stop().await;
+
+            // Clear the module's items
+            {
+                let mut items = self.items.write().await;
+                items.remove(name);
+            }
+
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Sync running modules with config (start new, stop removed)
+    async fn sync_modules_with_config(&self, config: &Config) {
+        let enabled_modules = Self::get_enabled_modules(config);
+
+        // Get currently running module names
+        let running_names: HashSet<String> = {
+            let running = self.running_modules.read().await;
+            running.keys().cloned().collect()
+        };
+
+        // Stop modules that are no longer enabled
+        for name in &running_names {
+            if !enabled_modules.contains(name) {
+                self.stop_module(name).await;
+            }
+        }
+
+        // Start modules that are newly enabled
+        for name in &enabled_modules {
+            if !running_names.contains(name) {
+                self.start_module(name, config).await;
+            }
+        }
+
+        // Reload config for modules that are still running
+        {
+            let running = self.running_modules.read().await;
+            for (name, rm) in running.iter() {
+                if enabled_modules.contains(name) {
+                    if rm.module.reload_config(config).await {
+                        tracing::info!("Reloaded config for module: {}", name);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get set of enabled module names from config
+    fn get_enabled_modules(config: &Config) -> HashSet<String> {
+        let mut enabled = HashSet::new();
+
+        if config.modules.tray.enabled {
+            enabled.insert("tray".to_string());
+        }
+        if let Some(ref c) = config.modules.battery {
+            if c.enabled {
+                enabled.insert("battery".to_string());
+            }
+        }
+        if let Some(ref c) = config.modules.clock {
+            if c.enabled {
+                enabled.insert("clock".to_string());
+            }
+        }
+        if let Some(ref c) = config.modules.system {
+            if c.enabled {
+                enabled.insert("system".to_string());
+            }
+        }
+        if let Some(ref c) = config.modules.network {
+            if c.enabled {
+                enabled.insert("network".to_string());
+            }
+        }
+        if let Some(ref c) = config.modules.weather {
+            if c.enabled {
+                enabled.insert("weather".to_string());
+            }
+        }
+        if let Some(ref c) = config.modules.pipewire {
+            if c.enabled {
+                enabled.insert("pipewire".to_string());
+            }
+        }
+        if let Some(ref c) = config.modules.power_profiles {
+            if c.enabled {
+                enabled.insert("power_profiles".to_string());
+            }
+        }
+
+        enabled
     }
 
     /// Get all items from all modules, ordered by module_order
@@ -306,14 +510,12 @@ impl ModuleRegistry {
         let module_name = parts[0];
 
         // Find the module and invoke the action
-        for module in &self.modules {
-            if module.name() == module_name {
-                module.invoke_action(item_id, action_id, x, y).await;
-                return;
-            }
+        let running = self.running_modules.read().await;
+        if let Some(rm) = running.get(module_name) {
+            rm.module.invoke_action(item_id, action_id, x, y).await;
+        } else {
+            tracing::warn!("Module not found for item: {}", item_id);
         }
-
-        tracing::warn!("Module not found for item: {}", item_id);
     }
 
     /// Get menu items for a module item
@@ -326,13 +528,12 @@ impl ModuleRegistry {
         let module_name = parts[0];
 
         // Find the module and get menu items
-        for module in &self.modules {
-            if module.name() == module_name {
-                return module.get_menu_items(item_id).await;
-            }
+        let running = self.running_modules.read().await;
+        if let Some(rm) = running.get(module_name) {
+            rm.module.get_menu_items(item_id).await
+        } else {
+            anyhow::bail!("Module not found for item: {}", item_id)
         }
-
-        anyhow::bail!("Module not found for item: {}", item_id)
     }
 
     /// Activate a menu item
@@ -345,28 +546,28 @@ impl ModuleRegistry {
         let module_name = parts[0];
 
         // Find the module and activate the menu item
-        for module in &self.modules {
-            if module.name() == module_name {
-                return module.activate_menu_item(item_id, menu_item_id).await;
-            }
+        let running = self.running_modules.read().await;
+        if let Some(rm) = running.get(module_name) {
+            rm.module.activate_menu_item(item_id, menu_item_id).await
+        } else {
+            anyhow::bail!("Module not found for item: {}", item_id)
         }
-
-        anyhow::bail!("Module not found for item: {}", item_id)
     }
 
     /// Get list of registered modules
-    pub fn get_modules(&self) -> Vec<ModuleInfo> {
-        self.modules
+    pub async fn get_modules(&self) -> Vec<ModuleInfo> {
+        let running = self.running_modules.read().await;
+        running
             .iter()
-            .map(|m| ModuleInfo {
-                name: m.name().to_string(),
-                enabled: m.enabled(),
+            .map(|(name, rm)| ModuleInfo {
+                name: name.clone(),
+                enabled: rm.module.enabled(),
             })
             .collect()
     }
 
-    /// Reload configuration for all modules
-    pub async fn reload_config(&self, config: &crate::config::Config) {
+    /// Reload configuration - sync modules and update order
+    pub async fn reload_config(&self, config: &Config) {
         // Update module order
         let new_order = config.module_order();
         {
@@ -375,13 +576,8 @@ impl ModuleRegistry {
             tracing::info!("Updated module order");
         }
 
-        // Reload each module's config
-        for module in &self.modules {
-            let name = module.name();
-            if module.reload_config(config).await {
-                tracing::info!("Reloaded config for module: {}", name);
-            }
-        }
+        // Sync modules with new config (start/stop as needed)
+        self.sync_modules_with_config(config).await;
 
         // Notify clients that config was reloaded so they refresh
         let _ = self.event_sender.send(ModuleEvent::ConfigReloaded);

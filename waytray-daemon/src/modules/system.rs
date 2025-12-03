@@ -245,8 +245,11 @@ impl Module for SystemModule {
         // Initial read to populate CPU state
         let _ = self.get_cpu_usage().await;
 
-        // Wait a moment for first delta
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        // Wait a moment for first delta (cancellable)
+        tokio::select! {
+            _ = ctx.cancelled() => return,
+            _ = tokio::time::sleep(Duration::from_millis(500)) => {}
+        }
 
         // Send initial items
         let items = self.create_items().await;
@@ -259,10 +262,13 @@ impl Module for SystemModule {
                 Duration::from_secs(config.interval_seconds)
             };
 
-            tokio::time::sleep(interval).await;
-
-            let items = self.create_items().await;
-            ctx.send_items("system", items);
+            tokio::select! {
+                _ = ctx.cancelled() => break,
+                _ = tokio::time::sleep(interval) => {
+                    let items = self.create_items().await;
+                    ctx.send_items("system", items);
+                }
+            }
         }
     }
 

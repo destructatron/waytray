@@ -36,6 +36,7 @@ anyhow = { workspace = true }
 # Async utilities
 futures = "0.3"
 async-trait = "0.1"
+tokio-util = "0.7"
 
 # Configuration
 toml = "0.8"

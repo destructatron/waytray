@@ -276,14 +276,17 @@ impl Module for PipewireModule {
         let poll_interval = Duration::from_millis(500);
 
         loop {
-            tokio::time::sleep(poll_interval).await;
-
-            if let Some(current_state) = Self::get_audio_state() {
-                // Only update if state changed
-                if current_state != last_state {
-                    let item = self.create_module_item(&current_state).await;
-                    ctx.send_items("pipewire", vec![item]);
-                    last_state = current_state;
+            tokio::select! {
+                _ = ctx.cancelled() => break,
+                _ = tokio::time::sleep(poll_interval) => {
+                    if let Some(current_state) = Self::get_audio_state() {
+                        // Only update if state changed
+                        if current_state != last_state {
+                            let item = self.create_module_item(&current_state).await;
+                            ctx.send_items("pipewire", vec![item]);
+                            last_state = current_state;
+                        }
+                    }
                 }
             }
         }

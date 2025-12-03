@@ -70,10 +70,13 @@ impl Module for ClockModule {
                 - Duration::from_nanos(nanos as u64)
                 + Duration::from_millis(100); // Small buffer
 
-            tokio::time::sleep(sleep_duration).await;
-
-            let item = self.create_module_item().await;
-            ctx.send_items("clock", vec![item]);
+            tokio::select! {
+                _ = ctx.cancelled() => break,
+                _ = tokio::time::sleep(sleep_duration) => {
+                    let item = self.create_module_item().await;
+                    ctx.send_items("clock", vec![item]);
+                }
+            }
         }
     }
 
