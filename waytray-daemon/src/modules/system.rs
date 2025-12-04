@@ -1,5 +1,6 @@
 //! System module - displays CPU and memory usage
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use async_trait::async_trait;
@@ -14,10 +15,25 @@ struct CpuState {
     prev_total: u64,
 }
 
+/// Per-process CPU tracking state
+struct ProcessCpuState {
+    /// Map of PID to (utime + stime) from previous reading
+    prev_times: HashMap<u32, u64>,
+    /// Total CPU time from previous reading
+    prev_total: u64,
+}
+
+/// Information about a process
+struct ProcessInfo {
+    name: String,
+    usage: f64, // percentage for CPU, MB for memory
+}
+
 /// System module that displays CPU and memory usage
 pub struct SystemModule {
     config: RwLock<SystemModuleConfig>,
     cpu_state: RwLock<Option<CpuState>>,
+    process_cpu_state: RwLock<Option<ProcessCpuState>>,
 }
 
 impl SystemModule {
@@ -25,6 +41,7 @@ impl SystemModule {
         Self {
             config: RwLock::new(config),
             cpu_state: RwLock::new(None),
+            process_cpu_state: RwLock::new(None),
         }
     }
 
@@ -144,9 +161,164 @@ impl SystemModule {
         None
     }
 
-    fn create_cpu_item(&self, usage: u8) -> ModuleItem {
+    /// Get the process using the most CPU
+    /// Returns (name, cpu_percentage)
+    async fn get_top_cpu_process(&self) -> Option<ProcessInfo> {
+        // Read total CPU time first
+        let stat_content = tokio::fs::read_to_string("/proc/stat").await.ok()?;
+        let first_line = stat_content.lines().next()?;
+        if !first_line.starts_with("cpu ") {
+            return None;
+        }
+        let total_values: Vec<u64> = first_line
+            .split_whitespace()
+            .skip(1)
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        let current_total: u64 = total_values.iter().sum();
+
+        // Read all process CPU times
+        let mut proc_entries = tokio::fs::read_dir("/proc").await.ok()?;
+        let mut current_times: HashMap<u32, (String, u64)> = HashMap::new();
+
+        while let Ok(Some(entry)) = proc_entries.next_entry().await {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+
+            // Only process numeric directories (PIDs)
+            if let Ok(pid) = name_str.parse::<u32>() {
+                let stat_path = entry.path().join("stat");
+                if let Ok(content) = tokio::fs::read_to_string(&stat_path).await {
+                    if let Some((proc_name, cpu_time)) = Self::parse_proc_stat(&content) {
+                        current_times.insert(pid, (proc_name, cpu_time));
+                    }
+                }
+            }
+        }
+
+        let mut state = self.process_cpu_state.write().await;
+
+        let result = if let Some(prev) = state.as_ref() {
+            let total_delta = current_total.saturating_sub(prev.prev_total);
+            if total_delta == 0 {
+                return None;
+            }
+
+            // Find the process with the highest CPU delta
+            let mut top_process: Option<ProcessInfo> = None;
+            let mut max_delta: u64 = 0;
+
+            for (pid, (name, current_time)) in &current_times {
+                if let Some(&prev_time) = prev.prev_times.get(pid) {
+                    let delta = current_time.saturating_sub(prev_time);
+                    if delta > max_delta {
+                        max_delta = delta;
+                        let cpu_percent = (delta as f64 / total_delta as f64) * 100.0;
+                        top_process = Some(ProcessInfo {
+                            name: name.clone(),
+                            usage: cpu_percent,
+                        });
+                    }
+                }
+            }
+
+            top_process
+        } else {
+            None // First reading, no delta yet
+        };
+
+        // Update state for next reading
+        *state = Some(ProcessCpuState {
+            prev_times: current_times.into_iter().map(|(pid, (_, time))| (pid, time)).collect(),
+            prev_total: current_total,
+        });
+
+        result
+    }
+
+    /// Parse /proc/[pid]/stat to get process name and CPU time
+    fn parse_proc_stat(content: &str) -> Option<(String, u64)> {
+        // Format: pid (comm) state ppid ... utime stime ...
+        // Fields 14 and 15 (1-indexed) are utime and stime
+        // comm can contain spaces and parentheses, so we need to find the last ')'
+        let start = content.find('(')?;
+        let end = content.rfind(')')?;
+
+        let name = content[start + 1..end].to_string();
+        let rest = &content[end + 2..]; // Skip ") "
+
+        let fields: Vec<&str> = rest.split_whitespace().collect();
+        // After comm, fields are: state(0), ppid(1), ..., utime(11), stime(12)
+        if fields.len() < 13 {
+            return None;
+        }
+
+        let utime: u64 = fields[11].parse().ok()?;
+        let stime: u64 = fields[12].parse().ok()?;
+
+        Some((name, utime + stime))
+    }
+
+    /// Get the process using the most memory
+    /// Returns (name, memory_mb)
+    async fn get_top_memory_process(&self) -> Option<ProcessInfo> {
+        let mut proc_entries = tokio::fs::read_dir("/proc").await.ok()?;
+        let mut top_process: Option<ProcessInfo> = None;
+        let mut max_rss: u64 = 0;
+
+        while let Ok(Some(entry)) = proc_entries.next_entry().await {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+
+            // Only process numeric directories (PIDs)
+            if name_str.parse::<u32>().is_ok() {
+                let status_path = entry.path().join("status");
+                if let Ok(content) = tokio::fs::read_to_string(&status_path).await {
+                    if let Some((proc_name, rss_kb)) = Self::parse_proc_status(&content) {
+                        if rss_kb > max_rss {
+                            max_rss = rss_kb;
+                            top_process = Some(ProcessInfo {
+                                name: proc_name,
+                                usage: rss_kb as f64 / 1024.0, // Convert to MB
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        top_process
+    }
+
+    /// Parse /proc/[pid]/status to get process name and RSS
+    fn parse_proc_status(content: &str) -> Option<(String, u64)> {
+        let mut name: Option<String> = None;
+        let mut rss: Option<u64> = None;
+
+        for line in content.lines() {
+            if line.starts_with("Name:") {
+                name = line.split_whitespace().nth(1).map(String::from);
+            } else if line.starts_with("VmRSS:") {
+                // Format: VmRSS: 12345 kB
+                rss = line.split_whitespace().nth(1).and_then(|s| s.parse().ok());
+            }
+
+            if name.is_some() && rss.is_some() {
+                break;
+            }
+        }
+
+        Some((name?, rss?))
+    }
+
+    fn create_cpu_item(&self, usage: u8, top_process: Option<ProcessInfo>) -> ModuleItem {
         // Use generic system monitor icon (cpu-specific icons often not available)
         let icon_name = "utilities-system-monitor";
+
+        let tooltip = match top_process {
+            Some(proc) => format!("CPU Usage: {}%\nTop: {} ({:.1}%)", usage, proc.name, proc.usage),
+            None => format!("CPU Usage: {}%", usage),
+        };
 
         ModuleItem {
             id: "system:cpu".to_string(),
@@ -156,12 +328,23 @@ impl SystemModule {
             icon_pixmap: None,
             icon_width: 0,
             icon_height: 0,
-            tooltip: Some(format!("CPU Usage: {}%", usage)),
+            tooltip: Some(tooltip),
             actions: Vec::new(),
         }
     }
 
-    fn create_memory_item(&self, percent: u8, used_gb: f64, total_gb: f64) -> ModuleItem {
+    fn create_memory_item(&self, percent: u8, used_gb: f64, total_gb: f64, top_process: Option<ProcessInfo>) -> ModuleItem {
+        let tooltip = match top_process {
+            Some(proc) => format!(
+                "Memory: {:.1} GB / {:.1} GB ({}%)\nTop: {} ({:.0} MB)",
+                used_gb, total_gb, percent, proc.name, proc.usage
+            ),
+            None => format!(
+                "Memory: {:.1} GB / {:.1} GB ({}%)",
+                used_gb, total_gb, percent
+            ),
+        };
+
         ModuleItem {
             id: "system:memory".to_string(),
             module: "system".to_string(),
@@ -170,10 +353,7 @@ impl SystemModule {
             icon_pixmap: None,
             icon_width: 0,
             icon_height: 0,
-            tooltip: Some(format!(
-                "Memory: {:.1} GB / {:.1} GB ({}%)",
-                used_gb, total_gb, percent
-            )),
+            tooltip: Some(tooltip),
             actions: Vec::new(),
         }
     }
@@ -206,7 +386,12 @@ impl SystemModule {
         // CPU usage and temperature together
         if config.show_cpu {
             if let Some(usage) = self.get_cpu_usage().await {
-                items.push(self.create_cpu_item(usage));
+                let top_process = if config.show_top_cpu_process {
+                    self.get_top_cpu_process().await
+                } else {
+                    None
+                };
+                items.push(self.create_cpu_item(usage, top_process));
             }
         }
 
@@ -219,7 +404,12 @@ impl SystemModule {
         // Memory last
         if config.show_memory {
             if let Some((percent, used_gb, total_gb)) = self.get_memory_usage().await {
-                items.push(self.create_memory_item(percent, used_gb, total_gb));
+                let top_process = if config.show_top_memory_process {
+                    self.get_top_memory_process().await
+                } else {
+                    None
+                };
+                items.push(self.create_memory_item(percent, used_gb, total_gb, top_process));
             }
         }
 

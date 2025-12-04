@@ -144,6 +144,8 @@ enabled = true
 show_cpu = true
 show_memory = true
 show_temperature = false
+show_top_cpu_process = false    # Show top CPU process in tooltip
+show_top_memory_process = false # Show top memory process in tooltip
 interval_seconds = 5
 
 [modules.network]

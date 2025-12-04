@@ -141,6 +141,8 @@ enabled = true
 show_cpu = true
 show_memory = true
 show_temperature = false
+show_top_cpu_process = false      # Show top CPU process in tooltip
+show_top_memory_process = false   # Show top memory process in tooltip
 interval_seconds = 5
 
 [modules.weather]
@@ -221,6 +223,8 @@ Displays CPU usage, memory usage, and CPU temperature. Reads from `/proc/stat`, 
 | `show_cpu` | bool | `true` | Show CPU usage percentage |
 | `show_memory` | bool | `true` | Show memory usage percentage |
 | `show_temperature` | bool | `false` | Show CPU temperature |
+| `show_top_cpu_process` | bool | `false` | Show top CPU process in CPU tooltip |
+| `show_top_memory_process` | bool | `false` | Show top memory process in memory tooltip |
 | `interval_seconds` | u64 | `5` | Update interval in seconds |
 
 #### Weather (`[modules.weather]`)

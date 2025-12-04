@@ -129,6 +129,10 @@ pub struct SystemModuleConfig {
     pub show_cpu: bool,
     pub show_memory: bool,
     pub show_temperature: bool,
+    /// Show the process using the most CPU in the CPU tooltip
+    pub show_top_cpu_process: bool,
+    /// Show the process using the most memory in the memory tooltip
+    pub show_top_memory_process: bool,
     /// Update interval in seconds
     pub interval_seconds: u64,
 }
@@ -140,6 +144,8 @@ impl Default for SystemModuleConfig {
             show_cpu: true,
             show_memory: true,
             show_temperature: false,
+            show_top_cpu_process: false,
+            show_top_memory_process: false,
             interval_seconds: 5,
         }
     }
@@ -339,6 +345,8 @@ enabled = true
 # show_cpu = true
 # show_memory = true
 # show_temperature = false
+# show_top_cpu_process = false    # Show top CPU process in tooltip
+# show_top_memory_process = false # Show top memory process in tooltip
 # interval_seconds = 5
 
 # Uncomment to enable weather module (uses wttr.in, no API key needed)
