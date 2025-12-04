@@ -83,29 +83,53 @@ impl WeatherModule {
     }
 
     /// Fetch weather data from wttr.in
-    async fn fetch_weather(&self) -> Option<WttrResponse> {
+    async fn fetch_weather(&self) -> Result<WttrResponse, String> {
         let url = self.build_url().await;
         tracing::debug!("Fetching weather from: {}", url);
 
         match self.http_client.get(&url).send().await {
             Ok(response) => {
                 if !response.status().is_success() {
-                    tracing::warn!("Weather API returned status: {}", response.status());
-                    return None;
+                    let msg = format!("Weather API returned status: {}", response.status());
+                    tracing::warn!("{}", msg);
+                    return Err(msg);
                 }
 
                 match response.json::<WttrResponse>().await {
-                    Ok(data) => Some(data),
+                    Ok(data) => Ok(data),
                     Err(e) => {
-                        tracing::warn!("Failed to parse weather response: {}", e);
-                        None
+                        let msg = format!("Failed to parse weather response: {}", e);
+                        tracing::warn!("{}", msg);
+                        Err(msg)
                     }
                 }
             }
             Err(e) => {
-                tracing::warn!("Failed to fetch weather: {}", e);
-                None
+                let msg = if e.is_connect() {
+                    "Network unavailable".to_string()
+                } else if e.is_timeout() {
+                    "Request timed out".to_string()
+                } else {
+                    format!("Failed to fetch weather: {}", e)
+                };
+                tracing::warn!("{}", msg);
+                Err(msg)
             }
+        }
+    }
+
+    /// Create an error module item to display when weather fetch fails
+    fn create_error_item(error: &str) -> ModuleItem {
+        ModuleItem {
+            id: "weather:error".to_string(),
+            module: "weather".to_string(),
+            label: "Weather: Error".to_string(),
+            icon_name: Some("weather-severe-alert".to_string()),
+            icon_pixmap: None,
+            icon_width: 0,
+            icon_height: 0,
+            tooltip: Some(format!("Failed to load weather data\n\nError: {}\n\nRetrying shortly...", error)),
+            actions: Vec::new(),
         }
     }
 
@@ -214,29 +238,58 @@ impl Module for WeatherModule {
                 if config.location.is_empty() { "auto-detect" } else { &config.location });
         }
 
+        // Retry interval when fetches fail (30 seconds)
+        const RETRY_INTERVAL_SECS: u64 = 30;
+
+        // Track whether we've ever had a successful fetch
+        let mut had_successful_fetch = false;
+
         // Fetch initial weather
-        if let Some(data) = self.fetch_weather().await {
-            if let Some(item) = self.create_module_item(&data).await {
-                ctx.send_items("weather", vec![item]);
+        match self.fetch_weather().await {
+            Ok(data) => {
+                if let Some(item) = self.create_module_item(&data).await {
+                    ctx.send_items("weather", vec![item]);
+                    had_successful_fetch = true;
+                }
             }
-        } else {
-            // Send empty on failure, will retry on next interval
-            ctx.send_items("weather", vec![]);
+            Err(error) => {
+                tracing::info!("Initial weather fetch failed, will retry in {} seconds", RETRY_INTERVAL_SECS);
+                ctx.send_items("weather", vec![Self::create_error_item(&error)]);
+            }
         }
 
-        // Poll at configured interval (re-read each iteration for hot reload)
+        // Poll at configured interval (or shorter retry interval on failure)
         loop {
-            let interval = {
+            let interval = if had_successful_fetch {
                 let config = self.config.read().await;
                 Duration::from_secs(config.interval_seconds)
+            } else {
+                Duration::from_secs(RETRY_INTERVAL_SECS)
             };
 
             tokio::select! {
                 _ = ctx.cancelled() => break,
                 _ = tokio::time::sleep(interval) => {
-                    if let Some(data) = self.fetch_weather().await {
-                        if let Some(item) = self.create_module_item(&data).await {
-                            ctx.send_items("weather", vec![item]);
+                    match self.fetch_weather().await {
+                        Ok(data) => {
+                            if let Some(item) = self.create_module_item(&data).await {
+                                ctx.send_items("weather", vec![item]);
+                                if !had_successful_fetch {
+                                    tracing::info!("Weather data loaded successfully after retry");
+                                    had_successful_fetch = true;
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            // Only show error if we previously had data (avoid flapping on startup)
+                            // or if we never had a successful fetch
+                            if had_successful_fetch {
+                                // Keep showing last known weather, just log the error
+                                tracing::warn!("Weather fetch failed, keeping last known data: {}", error);
+                            } else {
+                                // Still trying to get initial data, show error state
+                                ctx.send_items("weather", vec![Self::create_error_item(&error)]);
+                            }
                         }
                     }
                 }
