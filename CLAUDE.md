@@ -114,6 +114,13 @@ GTK4 application providing an accessible panel window:
 
 **DBusMenu support**: Some apps (e.g., Steam) don't implement the SNI `ContextMenu(x, y)` method but expose menus via `com.canonical.dbusmenu`. The daemon fetches menus using `GetLayout` and activates items via `Event("clicked")`. Menu items are flattened (parent_id relationships) for D-Bus transport, then rendered as an accessible GTK4 Popover in the client. Falls back to SNI `ContextMenu` if DBusMenu fails.
 
+## Version Management
+
+When updating the application version, the following files need to be changed:
+
+1. **Cargo.toml** (workspace root): `version = "X.Y.Z"` - The daemon and client inherit this via `version.workspace = true`
+2. **packaging/rpm/waytray.spec**: `Version:` field and add a new `%changelog` entry
+
 ## Configuration
 
 Config file: `~/.config/waytray/config.toml` (created automatically with defaults)
