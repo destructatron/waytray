@@ -5,7 +5,7 @@
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gdk, gio, glib};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
 use crate::daemon_proxy::DaemonClient;
@@ -26,6 +26,12 @@ mod imp {
         pub status_label: gtk4::Label,
         pub main_box: gtk4::Box,
         pub client: RefCell<Option<Arc<DaemonClient>>>,
+        /// Track if window has ever been focused (for close-on-focus-loss behavior)
+        pub has_been_focused: Cell<bool>,
+        /// Track number of open popovers (don't close window while popovers are open)
+        pub open_popover_count: Cell<u32>,
+        /// Temporarily suppress close-on-focus-loss after popover closes
+        pub suppress_close_until: Cell<Option<std::time::Instant>>,
     }
 
     impl Default for WayTrayWindow {
@@ -36,6 +42,9 @@ mod imp {
                 status_label: gtk4::Label::new(Some("Connecting to daemon...")),
                 main_box: gtk4::Box::new(gtk4::Orientation::Vertical, 0),
                 client: RefCell::new(None),
+                has_been_focused: Cell::new(false),
+                open_popover_count: Cell::new(0),
+                suppress_close_until: Cell::new(None),
             }
         }
     }
@@ -111,6 +120,26 @@ mod imp {
                 }
             ));
             obj.add_controller(key_controller);
+
+            // Close window when focus leaves (but not when using menus/popovers)
+            // Only close after the window has been focused at least once (handles
+            // compositors like Niri where fullscreen windows prevent initial focus)
+            obj.connect_notify_local(Some("is-active"), |window, _| {
+                let imp = window.imp();
+                if window.is_active() {
+                    imp.has_been_focused.set(true);
+                    // Clear any suppression when we regain focus
+                    imp.suppress_close_until.set(None);
+                } else if imp.has_been_focused.get() && imp.open_popover_count.get() == 0 {
+                    // Check if close is temporarily suppressed (popover just closed)
+                    if let Some(until) = imp.suppress_close_until.get() {
+                        if std::time::Instant::now() < until {
+                            return;
+                        }
+                    }
+                    window.close();
+                }
+            });
         }
     }
 
@@ -464,6 +493,7 @@ impl WayTrayWindow {
         // Clone widget for async block
         let widget_clone = widget.clone();
         let item_id_clone = item_id.clone();
+        let window = self.clone();
 
         glib::spawn_future_local(async move {
             // Try to get menu items via DBusMenu
@@ -476,6 +506,37 @@ impl WayTrayWindow {
                     popover.set_client(client.clone());
                     popover.set_item_id(&item_id_clone);
                     popover.set_menu_items(&items);
+
+                    // Track popover open/close to prevent window closing while menu is open
+                    let imp = window.imp();
+                    imp.open_popover_count.set(imp.open_popover_count.get() + 1);
+                    popover.connect_closed(glib::clone!(
+                        #[weak]
+                        window,
+                        move |_| {
+                            let imp = window.imp();
+                            imp.open_popover_count.set(imp.open_popover_count.get().saturating_sub(1));
+                            // Suppress close-on-focus-loss briefly to allow focus to return
+                            let suppress_until = std::time::Instant::now() + std::time::Duration::from_millis(200);
+                            imp.suppress_close_until.set(Some(suppress_until));
+
+                            // Schedule a check after suppression period - if focus didn't return, close
+                            glib::timeout_add_local_once(std::time::Duration::from_millis(250), glib::clone!(
+                                #[weak]
+                                window,
+                                move || {
+                                    let imp = window.imp();
+                                    // Only close if suppression wasn't cleared (by is-active becoming true)
+                                    if let Some(until) = imp.suppress_close_until.get() {
+                                        if until == suppress_until && !window.is_active() && imp.open_popover_count.get() == 0 {
+                                            window.close();
+                                        }
+                                    }
+                                }
+                            ));
+                        }
+                    ));
+
                     popover.popup();
                 }
                 Ok(_) => {
