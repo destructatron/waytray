@@ -1,5 +1,5 @@
 Name:           waytray
-Version:        1.0.0
+Version:        1.0.1
 Release:        1%{?dist}
 Summary:        Accessible system tray for Wayland
 
@@ -38,5 +38,8 @@ install -Dm755 target/release/waytray-daemon %{buildroot}%{_bindir}/waytray-daem
 %{_bindir}/waytray-daemon
 
 %changelog
+* Sun Dec 07 2025 Harley Richardson <hrichardson2004@hotmail.com> - 1.0.1-1
+- Close client window when focus leaves (tray-like behavior)
+
 * Sat Dec 06 2025 Harley Richardson <hrichardson2004@hotmail.com> - 1.0.0-1
 - Initial package
