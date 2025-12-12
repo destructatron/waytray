@@ -1,5 +1,5 @@
 Name:           waytray
-Version:        1.0.1
+Version:        1.0.2
 Release:        1%{?dist}
 Summary:        Accessible system tray for Wayland
 
@@ -38,6 +38,9 @@ install -Dm755 target/release/waytray-daemon %{buildroot}%{_bindir}/waytray-daem
 %{_bindir}/waytray-daemon
 
 %changelog
+* Thu Dec 12 2025 Harley Richardson <hrichardson2004@hotmail.com> - 1.0.2-1
+- Fix window closing unexpectedly when using arrow keys after context menu
+
 * Sun Dec 07 2025 Harley Richardson <hrichardson2004@hotmail.com> - 1.0.1-1
 - Close client window when focus leaves (tray-like behavior)
 

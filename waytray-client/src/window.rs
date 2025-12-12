@@ -32,6 +32,10 @@ mod imp {
         pub open_popover_count: Cell<u32>,
         /// Temporarily suppress close-on-focus-loss after popover closes
         pub suppress_close_until: Cell<Option<std::time::Instant>>,
+        /// Track last keyboard interaction to prevent close during active use
+        pub last_keyboard_interaction: Cell<Option<std::time::Instant>>,
+        /// Pending close - can be cancelled by keyboard interaction
+        pub pending_close_id: Cell<u64>,
     }
 
     impl Default for WayTrayWindow {
@@ -45,6 +49,8 @@ mod imp {
                 has_been_focused: Cell::new(false),
                 open_popover_count: Cell::new(0),
                 suppress_close_until: Cell::new(None),
+                last_keyboard_interaction: Cell::new(None),
+                pending_close_id: Cell::new(0),
             }
         }
     }
@@ -102,6 +108,14 @@ mod imp {
                 #[upgrade_or]
                 glib::Propagation::Proceed,
                 move |_, keyval, _keycode, _state| {
+                    let imp = obj.imp();
+                    // Record keyboard interaction to prevent spurious close-on-focus-loss
+                    imp.last_keyboard_interaction.set(Some(std::time::Instant::now()));
+                    // Cancel any pending close - user is actively interacting
+                    if imp.pending_close_id.get() > 0 {
+                        imp.pending_close_id.set(0);
+                    }
+
                     match keyval {
                         gdk::Key::Escape => {
                             obj.close();
@@ -126,10 +140,11 @@ mod imp {
             // compositors like Niri where fullscreen windows prevent initial focus)
             obj.connect_notify_local(Some("is-active"), |window, _| {
                 let imp = window.imp();
+
                 if window.is_active() {
                     imp.has_been_focused.set(true);
-                    // Clear any suppression when we regain focus
-                    imp.suppress_close_until.set(None);
+                    // Cancel any pending close since we're active again
+                    imp.pending_close_id.set(0);
                 } else if imp.has_been_focused.get() && imp.open_popover_count.get() == 0 {
                     // Check if close is temporarily suppressed (popover just closed)
                     if let Some(until) = imp.suppress_close_until.get() {
@@ -137,7 +152,23 @@ mod imp {
                             return;
                         }
                     }
-                    window.close();
+                    // Instead of closing immediately, schedule a delayed close.
+                    // This allows key events that triggered the focus loss to cancel the close.
+                    // The issue: pressing arrow keys can cause is-active to become false
+                    // BEFORE the key handler runs, so we need to give the key handler time.
+                    let close_id = imp.pending_close_id.get().wrapping_add(1).max(1);
+                    imp.pending_close_id.set(close_id);
+
+                    glib::timeout_add_local_once(std::time::Duration::from_millis(150), glib::clone!(
+                        #[weak]
+                        window,
+                        move || {
+                            let imp = window.imp();
+                            if imp.pending_close_id.get() == close_id && !window.is_active() {
+                                window.close();
+                            }
+                        }
+                    ));
                 }
             });
         }
@@ -500,7 +531,6 @@ impl WayTrayWindow {
             match client.get_item_menu(&item_id).await {
                 Ok(items) if !items.is_empty() => {
                     // Show our custom popover menu
-                    tracing::debug!("Got {} menu items for {}", items.len(), item_id);
                     let popover = MenuPopover::new();
                     popover.set_parent(&widget_clone);
                     popover.set_client(client.clone());
@@ -513,20 +543,27 @@ impl WayTrayWindow {
                     popover.connect_closed(glib::clone!(
                         #[weak]
                         window,
-                        move |_| {
+                        move |popover| {
                             let imp = window.imp();
-                            imp.open_popover_count.set(imp.open_popover_count.get().saturating_sub(1));
-                            // Suppress close-on-focus-loss briefly to allow focus to return
-                            let suppress_until = std::time::Instant::now() + std::time::Duration::from_millis(200);
+
+                            // Set suppression FIRST, before any operations that might trigger
+                            // is-active changes (like decrementing popover count or grabbing focus)
+                            let suppress_until = std::time::Instant::now() + std::time::Duration::from_millis(500);
                             imp.suppress_close_until.set(Some(suppress_until));
 
+                            imp.open_popover_count.set(imp.open_popover_count.get().saturating_sub(1));
+
+                            // Restore focus to the parent widget (the module item)
+                            if let Some(parent) = popover.parent() {
+                                parent.grab_focus();
+                            }
+
                             // Schedule a check after suppression period - if focus didn't return, close
-                            glib::timeout_add_local_once(std::time::Duration::from_millis(250), glib::clone!(
+                            glib::timeout_add_local_once(std::time::Duration::from_millis(600), glib::clone!(
                                 #[weak]
                                 window,
                                 move || {
                                     let imp = window.imp();
-                                    // Only close if suppression wasn't cleared (by is-active becoming true)
                                     if let Some(until) = imp.suppress_close_until.get() {
                                         if until == suppress_until && !window.is_active() && imp.open_popover_count.get() == 0 {
                                             window.close();
@@ -541,7 +578,6 @@ impl WayTrayWindow {
                 }
                 Ok(_) => {
                     // Empty menu - try legacy SNI context_menu method
-                    tracing::debug!("Empty menu for {}, trying SNI fallback", item_id);
                     if let Err(e) = client.invoke_action(&item_id, "context_menu", x, y).await {
                         tracing::warn!("SNI context_menu failed for {}: {}", item_id, e);
                     }
