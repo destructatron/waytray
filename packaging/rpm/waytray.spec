@@ -10,6 +10,7 @@ Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
 BuildRequires:  cargo
 BuildRequires:  rust
 BuildRequires:  gtk4-devel
+BuildRequires:  gtk4-layer-shell-devel
 BuildRequires:  gstreamer1-devel
 BuildRequires:  pkgconfig
 
