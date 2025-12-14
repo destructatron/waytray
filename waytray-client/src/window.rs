@@ -5,6 +5,7 @@
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gdk, gio, glib};
+use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
@@ -67,6 +68,23 @@ mod imp {
             self.parent_constructed();
 
             let obj = self.obj();
+
+            // Initialize layer shell if available (must be called before window is realized)
+            if gtk4_layer_shell::is_supported() {
+                tracing::info!("Layer shell supported, using overlay layer");
+                obj.init_layer_shell();
+                obj.set_layer(Layer::Overlay);
+
+                // Anchor to top edge, stretch across full width
+                obj.set_anchor(Edge::Top, true);
+                obj.set_anchor(Edge::Left, true);
+                obj.set_anchor(Edge::Right, true);
+
+                // Allow keyboard interaction
+                obj.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::OnDemand);
+            } else {
+                tracing::info!("Layer shell not supported, using regular window");
+            }
 
             // Configure window
             obj.set_title(Some("System Tray"));

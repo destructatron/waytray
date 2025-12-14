@@ -42,3 +42,6 @@ anyhow = { workspace = true }
 # Async utilities
 futures = "0.3"
 async-channel = "2"
+
+# Wayland layer shell support (for overlay windows)
+gtk4-layer-shell = "0.5"

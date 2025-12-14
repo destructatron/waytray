@@ -23,13 +23,18 @@ cargo test
 
 ## System Dependencies
 
-Requires GTK4 and GStreamer development libraries:
+Requires GTK4, GStreamer, and GTK4 Layer Shell development libraries:
 ```bash
 # Debian/Ubuntu
-sudo apt install libgtk-4-dev libgstreamer1.0-dev
+sudo apt install libgtk-4-dev libgstreamer1.0-dev libgtk4-layer-shell-dev
+
+# Gentoo
+emerge gui-libs/gtk4-layer-shell  # May need keyword unmasking
 ```
 
 For the pipewire module, ensure `pactl` is available (from `pulseaudio-utils` or `pipewire-pulse`).
+
+**Note**: The client uses GTK Layer Shell for Wayland overlay support (appearing above fullscreen windows). This is automatically detected at runtime - on X11 or when layer shell is unavailable, it falls back to a regular window.
 
 ## Architecture
 
