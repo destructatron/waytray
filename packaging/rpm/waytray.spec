@@ -1,5 +1,5 @@
 Name:           waytray
-Version:        1.0.2
+Version:        1.0.3
 Release:        1%{?dist}
 Summary:        Accessible system tray for Wayland
 
@@ -39,6 +39,9 @@ install -Dm755 target/release/waytray-daemon %{buildroot}%{_bindir}/waytray-daem
 %{_bindir}/waytray-daemon
 
 %changelog
+* Sun Dec 14 2025 Harley Richardson <hrichardson2004@hotmail.com> - 1.0.3-1
+- Add GTK Layer Shell support for Wayland overlay windows
+
 * Fri Dec 12 2025 Harley Richardson <hrichardson2004@hotmail.com> - 1.0.2-1
 - Fix window closing unexpectedly when using arrow keys after context menu
 
