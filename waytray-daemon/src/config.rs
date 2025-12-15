@@ -34,6 +34,7 @@ pub struct ModulesConfig {
     pub weather: Option<WeatherModuleConfig>,
     pub pipewire: Option<PipewireModuleConfig>,
     pub power_profiles: Option<PowerProfilesModuleConfig>,
+    pub gpu: Option<GpuModuleConfig>,
     #[serde(default)]
     pub scripts: Vec<ScriptModuleConfig>,
 }
@@ -50,6 +51,7 @@ impl Default for ModulesConfig {
             weather: None,
             pipewire: None,
             power_profiles: None,
+            gpu: None,
             scripts: Vec::new(),
         }
     }
@@ -237,6 +239,29 @@ impl Default for PowerProfilesModuleConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct GpuModuleConfig {
+    pub enabled: bool,
+    /// Show GPU temperature
+    pub show_temperature: bool,
+    /// Show the process using the most GPU memory
+    pub show_top_process: bool,
+    /// Update interval in seconds
+    pub interval_seconds: u64,
+}
+
+impl Default for GpuModuleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            show_temperature: false,
+            show_top_process: false,
+            interval_seconds: 5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ScriptModuleConfig {
     /// Unique name for this script module
     pub name: String,
@@ -375,6 +400,13 @@ enabled = true
 # [modules.power_profiles]
 # enabled = true
 
+# Uncomment to enable GPU module (supports NVIDIA via nvidia-smi, AMD via sysfs)
+# [modules.gpu]
+# enabled = true
+# show_temperature = false    # Show GPU temperature
+# show_top_process = false    # Show top GPU memory process in tooltip (NVIDIA only)
+# interval_seconds = 5
+
 [notifications]
 enabled = true
 timeout_ms = 5000
@@ -430,6 +462,11 @@ timeout_ms = 5000
         if let Some(ref power_profiles) = self.modules.power_profiles {
             if power_profiles.enabled && !order.contains(&"power_profiles".to_string()) {
                 order.push("power_profiles".to_string());
+            }
+        }
+        if let Some(ref gpu) = self.modules.gpu {
+            if gpu.enabled && !order.contains(&"gpu".to_string()) {
+                order.push("gpu".to_string());
             }
         }
         for script in &self.modules.scripts {

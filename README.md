@@ -120,7 +120,7 @@ WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the
 [modules]
 # Module display order (left to right)
 # Modules not listed appear after these
-order = ["tray", "pipewire", "power_profiles", "battery", "system", "network", "weather", "clock"]
+order = ["tray", "pipewire", "power_profiles", "battery", "system", "gpu", "network", "weather", "clock"]
 
 [modules.tray]
 enabled = true
@@ -166,6 +166,12 @@ scroll_step = 5               # Volume change per action
 
 [modules.power_profiles]
 enabled = true                # Requires power-profiles-daemon
+
+[modules.gpu]
+enabled = true
+show_temperature = false      # Show GPU temperature in tooltip
+show_top_process = false      # Show top GPU memory process (NVIDIA only)
+interval_seconds = 5
 
 [notifications]
 enabled = true
@@ -301,6 +307,29 @@ Displays and controls system power profile via power-profiles-daemon. Allows swi
 
 **Requirements:** Requires `power-profiles-daemon` to be installed and running. Available on most modern Linux distributions.
 
+#### GPU (`[modules.gpu]`)
+
+Displays GPU usage percentage and optionally temperature. Supports NVIDIA (via `nvidia-smi`) and AMD (via sysfs).
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable/disable the GPU module |
+| `show_temperature` | bool | `false` | Show GPU temperature in tooltip |
+| `show_top_process` | bool | `false` | Show top GPU memory process in tooltip (NVIDIA only) |
+| `interval_seconds` | u64 | `5` | Update interval in seconds |
+
+**Display:**
+- Label: GPU usage percentage (e.g., "GPU 45%")
+- Tooltip: Usage %, temperature (if enabled), top process (if enabled)
+- Icon: `video-display` (or `dialog-warning` if temperature ≥80°C)
+
+**Supported GPUs:**
+- **NVIDIA**: Full support via `nvidia-smi` (usage, temperature, top process)
+- **AMD**: Usage and temperature via sysfs (`/sys/class/drm/card*/device/`)
+- **Intel**: Detection only (usage monitoring requires elevated permissions)
+
+**Requirements:** For NVIDIA GPUs, requires the proprietary NVIDIA driver with `nvidia-smi` available.
+
 ### Notifications (`[notifications]`)
 
 Global notification settings.
@@ -320,6 +349,7 @@ Global notification settings.
 │  │   ├─ Battery module (UPower D-Bus)                   │
 │  │   ├─ Clock module (time display)                     │
 │  │   ├─ System module (CPU/memory from /proc)           │
+│  │   ├─ GPU module (nvidia-smi / sysfs)                 │
 │  │   ├─ Network module (interface stats from /sys)      │
 │  │   ├─ Pipewire module (audio volume via pactl)        │
 │  │   ├─ Power Profiles module (power-profiles-daemon)   │

@@ -64,6 +64,7 @@ The daemon uses a modular architecture configured via TOML:
 - **pipewire.rs**: Audio volume control via PulseAudio/PipeWire (pactl)
 - **power_profiles.rs**: Power profile switching via power-profiles-daemon D-Bus
 - **weather.rs**: Weather via wttr.in API (no API key required)
+- **gpu.rs**: GPU usage/temperature via nvidia-smi (NVIDIA) or sysfs (AMD)
 
 #### Module Trait
 ```rust
@@ -132,7 +133,7 @@ Config file: `~/.config/waytray/config.toml` (created automatically with default
 
 ```toml
 [modules]
-order = ["tray", "pipewire", "power_profiles", "battery", "system", "network", "weather", "clock"]
+order = ["tray", "pipewire", "power_profiles", "battery", "system", "gpu", "network", "weather", "clock"]
 
 [modules.tray]
 enabled = true
@@ -181,6 +182,12 @@ scroll_step = 5         # Volume change per scroll step
 
 [modules.power_profiles]
 enabled = true          # Requires power-profiles-daemon
+
+[modules.gpu]
+enabled = true
+show_temperature = false    # Show GPU temperature
+show_top_process = false    # Show top GPU memory process (NVIDIA only)
+interval_seconds = 5
 
 [notifications]
 enabled = true

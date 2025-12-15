@@ -1,5 +1,6 @@
 pub mod battery;
 pub mod clock;
+pub mod gpu;
 pub mod network;
 pub mod pipewire;
 pub mod power_profiles;
@@ -456,6 +457,11 @@ impl ModuleRegistry {
         if let Some(ref c) = config.modules.power_profiles {
             if c.enabled {
                 enabled.insert("power_profiles".to_string());
+            }
+        }
+        if let Some(ref c) = config.modules.gpu {
+            if c.enabled {
+                enabled.insert("gpu".to_string());
             }
         }
 

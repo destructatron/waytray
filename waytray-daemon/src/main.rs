@@ -15,6 +15,7 @@ use waytray_daemon::config_watcher;
 use waytray_daemon::dbus_service;
 use waytray_daemon::modules::battery::BatteryModule;
 use waytray_daemon::modules::clock::ClockModule;
+use waytray_daemon::modules::gpu::GpuModule;
 use waytray_daemon::modules::network::NetworkModule;
 use waytray_daemon::modules::pipewire::PipewireModule;
 use waytray_daemon::modules::power_profiles::PowerProfilesModule;
@@ -196,6 +197,20 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
             config.modules.power_profiles.as_ref().and_then(|c| {
                 if c.enabled {
                     Some(Arc::new(PowerProfilesModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                } else {
+                    None
+                }
+            })
+        }),
+    );
+
+    // GPU module factory
+    registry.register_factory(
+        "gpu",
+        Box::new(|config, _connection| {
+            config.modules.gpu.as_ref().and_then(|c| {
+                if c.enabled {
+                    Some(Arc::new(GpuModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }
