@@ -1,5 +1,5 @@
 Name:           waytray
-Version:        1.0.3
+Version:        1.0.4
 Release:        1%{?dist}
 Summary:        Accessible system tray for Wayland
 
@@ -39,6 +39,9 @@ install -Dm755 target/release/waytray-daemon %{buildroot}%{_bindir}/waytray-daem
 %{_bindir}/waytray-daemon
 
 %changelog
+* Mon Dec 15 2025 Harley Richardson <hrichardson2004@hotmail.com> - 1.0.4-1
+- Add GPU module for monitoring GPU usage and temperature
+
 * Sun Dec 14 2025 Harley Richardson <hrichardson2004@hotmail.com> - 1.0.3-1
 - Add GTK Layer Shell support for Wayland overlay windows
 
