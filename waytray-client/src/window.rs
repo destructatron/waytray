@@ -316,12 +316,22 @@ impl WayTrayWindow {
 
                 let window = self.clone();
                 widget.connect_scroll_up(move |widget| {
-                    window.invoke_item_action(widget, "volume_up");
+                    // Invoke the appropriate volume up action based on what the item supports
+                    if widget.has_action("mic_volume_up") {
+                        window.invoke_item_action(widget, "mic_volume_up");
+                    } else if widget.has_action("volume_up") {
+                        window.invoke_item_action(widget, "volume_up");
+                    }
                 });
 
                 let window = self.clone();
                 widget.connect_scroll_down(move |widget| {
-                    window.invoke_item_action(widget, "volume_down");
+                    // Invoke the appropriate volume down action based on what the item supports
+                    if widget.has_action("mic_volume_down") {
+                        window.invoke_item_action(widget, "mic_volume_down");
+                    } else if widget.has_action("volume_down") {
+                        window.invoke_item_action(widget, "volume_down");
+                    }
                 });
 
                 imp.items_box.append(&widget);

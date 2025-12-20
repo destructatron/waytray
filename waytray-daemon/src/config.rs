@@ -213,6 +213,14 @@ pub struct PipewireModuleConfig {
     pub max_volume: u32,
     /// Volume step for scroll adjustment (percentage)
     pub scroll_step: u32,
+    /// Show microphone control item
+    pub show_microphone: bool,
+    /// Show microphone volume percentage in label
+    pub show_mic_volume: bool,
+    /// Maximum microphone volume percentage (100 = normal, 150 = allow boost)
+    pub mic_max_volume: u32,
+    /// Microphone volume step for scroll adjustment (percentage)
+    pub mic_scroll_step: u32,
 }
 
 impl Default for PipewireModuleConfig {
@@ -222,6 +230,10 @@ impl Default for PipewireModuleConfig {
             show_volume: true,
             max_volume: 100,
             scroll_step: 5,
+            show_microphone: true,
+            show_mic_volume: true,
+            mic_max_volume: 100,
+            mic_scroll_step: 5,
         }
     }
 }
@@ -395,6 +407,10 @@ enabled = true
 # show_volume = true      # Show volume percentage in label
 # max_volume = 100        # Maximum volume (100 = normal, 150 = allow boost)
 # scroll_step = 5         # Volume change per scroll step
+# show_microphone = true  # Show microphone control item
+# show_mic_volume = true  # Show mic volume percentage in label
+# mic_max_volume = 100    # Maximum mic volume (100 = normal, 150 = allow boost)
+# mic_scroll_step = 5     # Mic volume change per scroll step
 
 # Uncomment to enable power profiles module (requires power-profiles-daemon)
 # [modules.power_profiles]

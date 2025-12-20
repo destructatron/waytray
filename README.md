@@ -163,6 +163,10 @@ enabled = true
 show_volume = true            # Show volume % in label
 max_volume = 100              # Cap volume (100 = normal, 150 = boost)
 scroll_step = 5               # Volume change per action
+show_microphone = true        # Show microphone control item
+show_mic_volume = true        # Show mic volume % in label
+mic_max_volume = 100          # Cap mic volume (100 = normal, 150 = boost)
+mic_scroll_step = 5           # Mic volume change per action
 
 [modules.power_profiles]
 enabled = true                # Requires power-profiles-daemon
@@ -268,7 +272,7 @@ Displays network connection status and transfer speeds. Reads from `/sys/class/n
 
 #### Pipewire (`[modules.pipewire]`)
 
-Displays audio volume and mute status. Uses `pactl` to communicate with PulseAudio or PipeWire (via pipewire-pulse).
+Displays audio output volume and microphone input controls. Uses `pactl` to communicate with PulseAudio or PipeWire (via pipewire-pulse).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -276,15 +280,24 @@ Displays audio volume and mute status. Uses `pactl` to communicate with PulseAud
 | `show_volume` | bool | `true` | Show volume percentage in label |
 | `max_volume` | u32 | `100` | Maximum volume cap (100 = normal, up to 150 for boost) |
 | `scroll_step` | u32 | `5` | Volume change percentage per action |
+| `show_microphone` | bool | `true` | Show microphone control item |
+| `show_mic_volume` | bool | `true` | Show microphone volume percentage in label |
+| `mic_max_volume` | u32 | `100` | Maximum mic volume cap (100 = normal, up to 150 for boost) |
+| `mic_scroll_step` | u32 | `5` | Mic volume change percentage per action |
 
-**Display:**
+**Display (Output):**
 - Label: Volume percentage (e.g., "75%") or "Muted"
 - Tooltip: Volume %, mute status, output device name
 - Icon: `audio-volume-muted`, `audio-volume-low`, `audio-volume-medium`, or `audio-volume-high`
 
+**Display (Microphone):**
+- Label: Volume percentage (e.g., "75%") or "Muted"
+- Tooltip: Volume %, mute status, input device name
+- Icon: `microphone-sensitivity-muted`, `microphone-sensitivity-low`, `microphone-sensitivity-medium`, or `microphone-sensitivity-high`
+
 **Actions:**
 - Enter/Click: Toggle mute
-- Up/Down arrows: Adjust volume when focused on this module
+- Up/Down arrows: Adjust volume when focused on output or microphone item
 
 **Requirements:** Requires `pactl` command (from `pulseaudio-utils` on Debian/Ubuntu or included with `pipewire-pulse`).
 

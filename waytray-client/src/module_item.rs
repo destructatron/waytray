@@ -315,7 +315,7 @@ impl ModuleItemWidget {
 
             // Up arrow: Scroll up / volume up action
             gdk::Key::Up | gdk::Key::KP_Up => {
-                if self.has_action("volume_up") {
+                if self.has_action("volume_up") || self.has_action("mic_volume_up") {
                     self.emit_by_name::<()>("scroll-up", &[]);
                     glib::Propagation::Stop
                 } else {
@@ -325,7 +325,7 @@ impl ModuleItemWidget {
 
             // Down arrow: Scroll down / volume down action
             gdk::Key::Down | gdk::Key::KP_Down => {
-                if self.has_action("volume_down") {
+                if self.has_action("volume_down") || self.has_action("mic_volume_down") {
                     self.emit_by_name::<()>("scroll-down", &[]);
                     glib::Propagation::Stop
                 } else {
