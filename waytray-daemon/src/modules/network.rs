@@ -119,9 +119,10 @@ impl NetworkModule {
             let rx_delta = rx_bytes.saturating_sub(prev.rx_bytes);
             let tx_delta = tx_bytes.saturating_sub(prev.tx_bytes);
 
-            // Convert to bytes per second
-            let rx_speed = rx_delta / interval_secs;
-            let tx_speed = tx_delta / interval_secs;
+            // Convert to bytes per second (ensure at least 1 second to prevent division by zero)
+            let safe_interval = interval_secs.max(1);
+            let rx_speed = rx_delta / safe_interval;
+            let tx_speed = tx_delta / safe_interval;
 
             Some((rx_speed, tx_speed))
         } else {

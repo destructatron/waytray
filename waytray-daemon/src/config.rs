@@ -327,6 +327,18 @@ impl Config {
         let config: Config = toml::from_str(&content)
             .with_context(|| format!("Failed to parse config file: {:?}", path))?;
 
+        // Validate battery thresholds
+        if let Some(ref battery) = config.modules.battery {
+            if battery.low_threshold <= battery.critical_threshold {
+                tracing::warn!(
+                    "Battery config: low_threshold ({}) should be greater than critical_threshold ({}). \
+                     Critical notifications may not trigger correctly.",
+                    battery.low_threshold,
+                    battery.critical_threshold
+                );
+            }
+        }
+
         tracing::info!("Loaded config from {:?}", path);
         Ok(config)
     }

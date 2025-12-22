@@ -543,6 +543,8 @@ impl Module for PipewireModule {
                 let max = config.max_volume;
 
                 // Check if we're already at max before increasing
+                // Note: There's a small race window here, but using absolute volume would
+                // reset channel balance settings, which is worse than occasional overshoot
                 if let Some(state) = Self::get_audio_state() {
                     if state.volume_percent >= max {
                         return;
@@ -573,6 +575,8 @@ impl Module for PipewireModule {
                 let max = config.mic_max_volume;
 
                 // Check if we're already at max before increasing
+                // Note: There's a small race window here, but using absolute volume would
+                // reset channel balance settings, which is worse than occasional overshoot
                 if let Some(state) = Self::get_mic_state() {
                     if state.volume_percent >= max {
                         return;

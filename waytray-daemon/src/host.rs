@@ -238,6 +238,12 @@ impl Host {
 
         tokio::spawn(async move {
             while new_title.next().await.is_some() {
+                // Check if item still exists in cache, exit if removed
+                if cache_title.get(&service_title).await.is_none() {
+                    tracing::debug!("Item {} removed, stopping title signal handler", service_title);
+                    break;
+                }
+
                 let proxy = match StatusNotifierItemProxy::builder(&connection_title)
                     .destination(bus_name_title.as_str())
                     .and_then(|b| b.path(object_path_title.as_str()))
@@ -272,6 +278,12 @@ impl Host {
 
         tokio::spawn(async move {
             while new_icon.next().await.is_some() {
+                // Check if item still exists in cache, exit if removed
+                if cache_icon.get(&service_icon).await.is_none() {
+                    tracing::debug!("Item {} removed, stopping icon signal handler", service_icon);
+                    break;
+                }
+
                 let proxy = match StatusNotifierItemProxy::builder(&connection_icon)
                     .destination(bus_name_icon.as_str())
                     .and_then(|b| b.path(object_path_icon.as_str()))
@@ -304,6 +316,12 @@ impl Host {
 
         tokio::spawn(async move {
             while let Some(signal) = new_status.next().await {
+                // Check if item still exists in cache, exit if removed
+                if cache_status.get(&service_status).await.is_none() {
+                    tracing::debug!("Item {} removed, stopping status signal handler", service_status);
+                    break;
+                }
+
                 match signal.args() {
                     Ok(args) => {
                         let status = ItemStatus::from_str(&args.status);
@@ -326,6 +344,12 @@ impl Host {
 
         tokio::spawn(async move {
             while new_tooltip.next().await.is_some() {
+                // Check if item still exists in cache, exit if removed
+                if cache_tooltip.get(&service_tooltip).await.is_none() {
+                    tracing::debug!("Item {} removed, stopping tooltip signal handler", service_tooltip);
+                    break;
+                }
+
                 let proxy = match StatusNotifierItemProxy::builder(&connection_tooltip)
                     .destination(bus_name_tooltip.as_str())
                     .and_then(|b| b.path(object_path_tooltip.as_str()))

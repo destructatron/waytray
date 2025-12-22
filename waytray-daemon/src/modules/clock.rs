@@ -66,9 +66,10 @@ impl Module for ClockModule {
             let nanos = now.nanosecond();
 
             // Sleep until just after the next minute starts
+            // Use saturating operations to prevent underflow panic when near minute boundary
             let sleep_duration = Duration::from_secs(seconds_until_next_minute)
-                - Duration::from_nanos(nanos as u64)
-                + Duration::from_millis(100); // Small buffer
+                .saturating_sub(Duration::from_nanos(nanos as u64))
+                .saturating_add(Duration::from_millis(100)); // Small buffer
 
             tokio::select! {
                 _ = ctx.cancelled() => break,
