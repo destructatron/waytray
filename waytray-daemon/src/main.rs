@@ -19,6 +19,7 @@ use waytray_daemon::modules::gpu::GpuModule;
 use waytray_daemon::modules::network::NetworkModule;
 use waytray_daemon::modules::pipewire::PipewireModule;
 use waytray_daemon::modules::power_profiles::PowerProfilesModule;
+use waytray_daemon::modules::scripts::ScriptsModule;
 use waytray_daemon::modules::system::SystemModule;
 use waytray_daemon::modules::tray::TrayModule;
 use waytray_daemon::modules::weather::WeatherModule;
@@ -215,6 +216,27 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
                     None
                 }
             })
+        }),
+    );
+
+    // Scripts module factory
+    registry.register_factory(
+        "scripts",
+        Box::new(|config, _connection| {
+            // Check if there are any enabled scripts
+            let enabled_scripts: Vec<_> = config
+                .modules
+                .scripts
+                .iter()
+                .filter(|s| s.enabled)
+                .cloned()
+                .collect();
+
+            if enabled_scripts.is_empty() {
+                None
+            } else {
+                Some(Arc::new(ScriptsModule::new(enabled_scripts)) as Arc<dyn waytray_daemon::modules::Module>)
+            }
         }),
     );
 }

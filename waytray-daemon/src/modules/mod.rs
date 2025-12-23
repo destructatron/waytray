@@ -4,6 +4,7 @@ pub mod gpu;
 pub mod network;
 pub mod pipewire;
 pub mod power_profiles;
+pub mod scripts;
 pub mod system;
 pub mod tray;
 pub mod weather;
@@ -463,6 +464,10 @@ impl ModuleRegistry {
             if c.enabled {
                 enabled.insert("gpu".to_string());
             }
+        }
+        // Check if there are any enabled scripts
+        if config.modules.scripts.iter().any(|s| s.enabled) {
+            enabled.insert("scripts".to_string());
         }
 
         enabled

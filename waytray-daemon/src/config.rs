@@ -273,18 +273,42 @@ impl Default for GpuModuleConfig {
     }
 }
 
+/// Script execution mode
+#[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ScriptMode {
+    /// Run script once when module loads
+    Once,
+    /// Spawn as long-running process, monitor stdout for updates
+    Watch,
+    /// Run script at regular intervals
+    #[default]
+    Interval,
+    /// Run script when client connects/requests refresh
+    OnConnect,
+}
+
+fn default_script_interval() -> u64 {
+    30
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ScriptModuleConfig {
-    /// Unique name for this script module
-    pub name: String,
-    /// Command to execute (shell command)
-    pub command: String,
-    /// Update interval in seconds
+    /// Unique identifier for this script (used in module name)
+    pub id: String,
+    /// Path to the script to execute
+    pub path: String,
+    /// Must be explicitly set to true to enable (security measure)
+    #[serde(default)]
+    pub enabled: bool,
+    /// Execution mode: once, watch, interval, or on_connect
+    #[serde(default)]
+    pub mode: ScriptMode,
+    /// Update interval in seconds (only used for interval mode)
+    #[serde(default = "default_script_interval")]
     pub interval_seconds: u64,
-    /// Icon name from theme (optional)
+    /// Default icon name from theme (can be overridden by script output)
     pub icon: Option<String>,
-    /// Static tooltip text (optional)
-    pub tooltip: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -435,6 +459,24 @@ enabled = true
 # show_top_process = false    # Show top GPU memory process in tooltip (NVIDIA only)
 # interval_seconds = 5
 
+# Custom scripts module - each script must be explicitly enabled for security
+# Script output format:
+#   - Line-based: first line = label, second line = tooltip (optional)
+#   - JSON: {"label": "text", "tooltip": "...", "icon": "...", "actions": [...]}
+# Modes:
+#   - once: Run script once when module loads
+#   - watch: Spawn script as long-running process, monitor stdout for updates
+#   - interval: Run script at regular intervals
+#   - on_connect: Run script when client connects
+#
+# [[modules.scripts]]
+# id = "my-script"
+# path = "/path/to/script.sh"
+# enabled = true              # REQUIRED: must be true to run (security)
+# mode = "interval"           # once, watch, interval, on_connect
+# interval_seconds = 30       # Only used for interval mode
+# icon = "utilities-terminal" # Default icon (can be overridden by script)
+
 [notifications]
 enabled = true
 timeout_ms = 5000
@@ -497,11 +539,10 @@ timeout_ms = 5000
                 order.push("gpu".to_string());
             }
         }
-        for script in &self.modules.scripts {
-            let script_name = format!("script:{}", script.name);
-            if !order.contains(&script_name) {
-                order.push(script_name);
-            }
+        // Add scripts module if there are any enabled scripts
+        let has_enabled_scripts = self.modules.scripts.iter().any(|s| s.enabled);
+        if has_enabled_scripts && !order.contains(&"scripts".to_string()) {
+            order.push("scripts".to_string());
         }
 
         order
@@ -551,8 +592,10 @@ show_memory = true
 interval_seconds = 10
 
 [[modules.scripts]]
-name = "my-script"
-command = "/path/to/script.sh"
+id = "my-script"
+path = "/path/to/script.sh"
+enabled = true
+mode = "interval"
 interval_seconds = 30
 icon = "utilities-terminal"
 
@@ -566,7 +609,9 @@ timeout_ms = 3000
         assert_eq!(config.modules.battery.as_ref().unwrap().low_threshold, 15);
         assert!(config.modules.system.as_ref().unwrap().show_cpu);
         assert_eq!(config.modules.scripts.len(), 1);
-        assert_eq!(config.modules.scripts[0].name, "my-script");
+        assert_eq!(config.modules.scripts[0].id, "my-script");
+        assert!(config.modules.scripts[0].enabled);
+        assert_eq!(config.modules.scripts[0].mode, ScriptMode::Interval);
         assert_eq!(config.notifications.timeout_ms, 3000);
     }
 

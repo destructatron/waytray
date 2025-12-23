@@ -65,6 +65,7 @@ The daemon uses a modular architecture configured via TOML:
 - **power_profiles.rs**: Power profile switching via power-profiles-daemon D-Bus
 - **weather.rs**: Weather via wttr.in API (no API key required)
 - **gpu.rs**: GPU usage/temperature via nvidia-smi (NVIDIA) or sysfs (AMD)
+- **scripts.rs**: Custom user scripts with multiple execution modes (once, watch, interval, on_connect)
 
 #### Module Trait
 ```rust
@@ -193,7 +194,52 @@ show_temperature = false    # Show GPU temperature
 show_top_process = false    # Show top GPU memory process (NVIDIA only)
 interval_seconds = 5
 
+# Custom scripts - each must be explicitly enabled for security
+[[modules.scripts]]
+id = "my-script"
+path = "/path/to/script.sh"
+enabled = true              # REQUIRED: must be true to run
+mode = "interval"           # once, watch, interval, on_connect
+interval_seconds = 30       # Only for interval mode
+icon = "utilities-terminal" # Default icon (can be overridden by script)
+
 [notifications]
 enabled = true
 timeout_ms = 5000
 ```
+
+### Custom Scripts
+
+The scripts module allows running custom scripts and displaying their output. Scripts must be explicitly enabled per-script for security.
+
+**Execution Modes:**
+- `once` - Run script once when module loads
+- `watch` - Spawn as long-running process, monitor stdout for updates (each line triggers update)
+- `interval` - Run script at regular intervals
+- `on_connect` - Run script when module starts and on config reload
+
+**Output Formats:**
+
+Scripts can output in two formats (auto-detected):
+
+1. **JSON format** (if output starts with `{`):
+```json
+{
+  "label": "Display text",
+  "tooltip": "Tooltip text",
+  "icon": "icon-name",
+  "actions": [
+    {"id": "Activate", "command": "/path/to/click.sh"},
+    {"id": "ScrollUp", "command": "/path/to/up.sh"},
+    {"id": "ScrollDown", "command": "/path/to/down.sh"}
+  ]
+}
+```
+
+2. **Line-based format**:
+```
+Label text (first line)
+Tooltip text (optional second line)
+```
+
+**Security:** Scripts must have `enabled = true` explicitly set. Scripts with `enabled` missing or false are skipped. The script path must exist or a warning is logged.

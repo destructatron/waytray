@@ -120,7 +120,7 @@ WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the
 [modules]
 # Module display order (left to right)
 # Modules not listed appear after these
-order = ["tray", "pipewire", "power_profiles", "battery", "system", "gpu", "network", "weather", "clock"]
+order = ["tray", "pipewire", "power_profiles", "battery", "system", "gpu", "network", "weather", "clock", "scripts"]
 
 [modules.tray]
 enabled = true
@@ -343,6 +343,85 @@ Displays GPU usage percentage and optionally temperature. Supports NVIDIA (via `
 
 **Requirements:** For NVIDIA GPUs, requires the proprietary NVIDIA driver with `nvidia-smi` available.
 
+#### Scripts (`[[modules.scripts]]`)
+
+Run custom scripts and display their output. Each script must be explicitly enabled for security. Multiple scripts can be configured using TOML array-of-tables syntax.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `id` | string | required | Unique identifier for this script |
+| `path` | string | required | Path to the script to execute |
+| `enabled` | bool | `false` | **Must be `true`** to run (security measure) |
+| `mode` | string | `"interval"` | Execution mode (see below) |
+| `interval_seconds` | u64 | `30` | Update interval (only for `interval` mode) |
+| `icon` | string | `null` | Default icon (can be overridden by script output) |
+
+**Execution Modes:**
+
+| Mode | Description |
+|------|-------------|
+| `once` | Run script once when module loads |
+| `watch` | Spawn as long-running process, monitor stdout for updates (each line triggers update) |
+| `interval` | Run script at regular intervals |
+| `on_connect` | Run script when module starts and on config reload |
+
+**Output Formats:**
+
+Scripts can output in two formats (auto-detected based on whether output starts with `{`):
+
+1. **JSON format** - for structured output with actions:
+```json
+{
+  "label": "Display text",
+  "tooltip": "Tooltip text",
+  "icon": "icon-name",
+  "actions": [
+    {"id": "Activate", "command": "/path/to/click-handler.sh"},
+    {"id": "ScrollUp", "command": "/path/to/scroll-up.sh"},
+    {"id": "ScrollDown", "command": "/path/to/scroll-down.sh"}
+  ]
+}
+```
+
+2. **Line-based format** - simple text output:
+```
+Label text (first line)
+Tooltip text (optional second line)
+```
+
+**Example Configuration:**
+
+```toml
+# Simple uptime display
+[[modules.scripts]]
+id = "uptime"
+path = "/home/user/scripts/uptime.sh"
+enabled = true
+mode = "interval"
+interval_seconds = 60
+icon = "computer"
+
+# Disk usage with click action
+[[modules.scripts]]
+id = "disk"
+path = "/home/user/scripts/disk-usage.sh"
+enabled = true
+mode = "interval"
+interval_seconds = 300
+icon = "drive-harddisk"
+
+# Long-running counter (watch mode)
+[[modules.scripts]]
+id = "counter"
+path = "/home/user/scripts/counter.sh"
+enabled = true
+mode = "watch"
+```
+
+**Security:** Scripts are disabled by default and must have `enabled = true` explicitly set. The script path must exist or a warning is logged and the script is skipped.
+
+**Example scripts** are available in the `examples/scripts/` directory.
+
 ### Notifications (`[notifications]`)
 
 Global notification settings.
@@ -366,7 +445,8 @@ Global notification settings.
 │  │   ├─ Network module (interface stats from /sys)      │
 │  │   ├─ Pipewire module (audio volume via pactl)        │
 │  │   ├─ Power Profiles module (power-profiles-daemon)   │
-│  │   └─ Weather module (wttr.in API)                    │
+│  │   ├─ Weather module (wttr.in API)                    │
+│  │   └─ Scripts module (custom user scripts)            │
 │  ├─ StatusNotifierWatcher (fallback if none exists)     │
 │  ├─ Notification service (desktop notifications)        │
 │  └─ org.waytray.Daemon interface for clients            │
