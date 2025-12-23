@@ -49,6 +49,8 @@ pub struct ScriptsModule {
     scripts: Arc<RwLock<HashMap<String, ScriptState>>>,
     /// Action commands keyed by "script_id:action_id"
     action_commands: Arc<RwLock<HashMap<String, String>>>,
+    /// Module context for sending item updates (set during start)
+    ctx: RwLock<Option<Arc<ModuleContext>>>,
 }
 
 impl ScriptsModule {
@@ -85,6 +87,7 @@ impl ScriptsModule {
         Self {
             scripts: Arc::new(RwLock::new(scripts)),
             action_commands: Arc::new(RwLock::new(HashMap::new())),
+            ctx: RwLock::new(None),
         }
     }
 
@@ -326,6 +329,12 @@ impl Module for ScriptsModule {
     }
 
     async fn start(&self, ctx: Arc<ModuleContext>) {
+        // Store context for use in reload_config
+        {
+            let mut ctx_lock = self.ctx.write().await;
+            *ctx_lock = Some(ctx.clone());
+        }
+
         let scripts = self.scripts.read().await;
 
         if scripts.is_empty() {
@@ -480,17 +489,126 @@ impl Module for ScriptsModule {
         }
     }
 
-    async fn reload_config(&self, _config: &crate::config::Config) -> bool {
-        // For now, just re-run on_connect scripts
-        // A full implementation would compare configs and restart changed scripts
-        let scripts = self.scripts.read().await;
+    async fn reload_config(&self, config: &crate::config::Config) -> bool {
+        // Get the set of currently enabled script configs from new config
+        let new_scripts: HashMap<String, &ScriptModuleConfig> = config
+            .modules
+            .scripts
+            .iter()
+            .filter(|s| s.enabled)
+            .map(|s| (s.id.clone(), s))
+            .collect();
 
-        for (script_id, state) in scripts.iter() {
-            if state.config.mode == ScriptMode::OnConnect {
-                tracing::debug!("Re-running on_connect script {} due to config reload", script_id);
-                // Note: We can't call update_script here because we hold a read lock
-                // This would need to be restructured for full support
+        let new_script_ids: std::collections::HashSet<String> = new_scripts.keys().cloned().collect();
+
+        // Get current script IDs
+        let current_script_ids: std::collections::HashSet<String> = {
+            let scripts = self.scripts.read().await;
+            scripts.keys().cloned().collect()
+        };
+
+        // Find scripts to remove
+        let scripts_to_remove: Vec<String> = current_script_ids
+            .difference(&new_script_ids)
+            .cloned()
+            .collect();
+
+        // Find scripts to add
+        let scripts_to_add: Vec<String> = new_script_ids
+            .difference(&current_script_ids)
+            .cloned()
+            .collect();
+
+        // Remove scripts that are no longer in config
+        if !scripts_to_remove.is_empty() {
+            let mut scripts = self.scripts.write().await;
+            let mut action_commands = self.action_commands.write().await;
+
+            for script_id in &scripts_to_remove {
+                tracing::info!("Removing script '{}' due to config change", script_id);
+
+                // Kill watch process if running
+                if let Some(mut state) = scripts.remove(script_id) {
+                    if let Some(mut child) = state.watch_child.take() {
+                        let _ = child.kill().await;
+                    }
+                }
+
+                // Remove action commands for this script
+                action_commands.retain(|k, _| !k.starts_with(&format!("{}:", script_id)));
             }
+        }
+
+        // Add new scripts
+        let ctx_opt = self.ctx.read().await.clone();
+        for script_id in &scripts_to_add {
+            if let Some(script_config) = new_scripts.get(script_id) {
+                // Validate script path exists
+                if !Path::new(&script_config.path).exists() {
+                    tracing::warn!(
+                        "Script '{}' path does not exist: {}",
+                        script_config.id,
+                        script_config.path
+                    );
+                    continue;
+                }
+
+                tracing::info!("Adding script '{}' with mode {:?}", script_id, script_config.mode);
+
+                // Add to scripts map
+                {
+                    let mut scripts = self.scripts.write().await;
+                    scripts.insert(
+                        script_id.clone(),
+                        ScriptState {
+                            config: (*script_config).clone(),
+                            last_output: None,
+                            watch_child: None,
+                        },
+                    );
+                }
+
+                // Start the script based on its mode
+                if let Some(ref ctx) = ctx_opt {
+                    match script_config.mode {
+                        ScriptMode::Watch => {
+                            self.start_watch_script(
+                                script_id.clone(),
+                                script_config.path.clone(),
+                                script_config.icon.clone(),
+                                ctx.clone(),
+                            )
+                            .await;
+                        }
+                        ScriptMode::Once | ScriptMode::Interval | ScriptMode::OnConnect => {
+                            let _ = self.update_script(script_id).await;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Re-run on_connect scripts (existing ones)
+        {
+            let scripts = self.scripts.read().await;
+            let on_connect_ids: Vec<String> = scripts
+                .iter()
+                .filter(|(id, state)| {
+                    state.config.mode == ScriptMode::OnConnect && !scripts_to_add.contains(*id)
+                })
+                .map(|(id, _)| id.clone())
+                .collect();
+            drop(scripts);
+
+            for script_id in on_connect_ids {
+                let _ = self.update_script(&script_id).await;
+            }
+        }
+
+        // Send updated items if we have a context
+        if let Some(ctx) = ctx_opt {
+            let all_items = self.get_all_items().await;
+            ctx.send_items("scripts", all_items);
         }
 
         true
