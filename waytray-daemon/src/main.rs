@@ -18,6 +18,7 @@ use waytray_daemon::modules::clock::ClockModule;
 use waytray_daemon::modules::gpu::GpuModule;
 use waytray_daemon::modules::network::NetworkModule;
 use waytray_daemon::modules::pipewire::PipewireModule;
+use waytray_daemon::modules::privacy::PrivacyModule;
 use waytray_daemon::modules::power_profiles::PowerProfilesModule;
 use waytray_daemon::modules::scripts::ScriptsModule;
 use waytray_daemon::modules::system::SystemModule;
@@ -184,6 +185,20 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
             config.modules.pipewire.as_ref().and_then(|c| {
                 if c.enabled {
                     Some(Arc::new(PipewireModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                } else {
+                    None
+                }
+            })
+        }),
+    );
+
+    // Privacy module factory
+    registry.register_factory(
+        "privacy",
+        Box::new(|config, _connection| {
+            config.modules.privacy.as_ref().and_then(|c| {
+                if c.enabled {
+                    Some(Arc::new(PrivacyModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }

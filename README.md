@@ -48,7 +48,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 - GTK4
 - A D-Bus session bus (standard on most Linux desktops)
-- `pactl` for pipewire module (from `pulseaudio-utils` or `pipewire-pulse`)
+- `pactl` for pipewire and privacy modules (from `pulseaudio-utils` or `pipewire-pulse`)
 
 ## Building
 
@@ -120,7 +120,7 @@ WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the
 [modules]
 # Module display order (left to right)
 # Modules not listed appear after these
-order = ["tray", "pipewire", "power_profiles", "battery", "system", "gpu", "network", "weather", "clock", "scripts"]
+order = ["tray", "pipewire", "privacy", "power_profiles", "battery", "system", "gpu", "network", "weather", "clock", "scripts"]
 
 [modules.tray]
 enabled = true
@@ -167,6 +167,11 @@ show_microphone = true        # Show microphone control item
 show_mic_volume = true        # Show mic volume % in label
 mic_max_volume = 100          # Cap mic volume (100 = normal, 150 = boost)
 mic_scroll_step = 5           # Mic volume change per action
+
+[modules.privacy]
+enabled = true
+interval_seconds = 2          # Polling interval
+show_when_idle = false        # Show item when no apps are using the mic
 
 [modules.power_profiles]
 enabled = true                # Requires power-profiles-daemon
@@ -298,6 +303,23 @@ Displays audio output volume and microphone input controls. Uses `pactl` to comm
 **Actions:**
 - Enter/Click: Toggle mute
 - Up/Down arrows: Adjust volume when focused on output or microphone item
+
+**Requirements:** Requires `pactl` command (from `pulseaudio-utils` on Debian/Ubuntu or included with `pipewire-pulse`).
+
+#### Privacy (`[modules.privacy]`)
+
+Shows which applications are currently using the microphone. Uses `pactl list source-outputs` and filters out corked streams.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable/disable the privacy module |
+| `interval_seconds` | u64 | `2` | Update interval in seconds |
+| `show_when_idle` | bool | `false` | Show an idle item when no apps are using the mic |
+
+**Display:**
+- Label: Active app name (or "App +N" if multiple)
+- Tooltip: Full list of active apps, or "No apps are using the microphone."
+- Icon: `microphone-sensitivity-high` when active, `microphone-sensitivity-muted` when idle
 
 **Requirements:** Requires `pactl` command (from `pulseaudio-utils` on Debian/Ubuntu or included with `pipewire-pulse`).
 
@@ -444,6 +466,7 @@ Global notification settings.
 │  │   ├─ GPU module (nvidia-smi / sysfs)                 │
 │  │   ├─ Network module (interface stats from /sys)      │
 │  │   ├─ Pipewire module (audio volume via pactl)        │
+│  │   ├─ Privacy module (mic usage via pactl)            │
 │  │   ├─ Power Profiles module (power-profiles-daemon)   │
 │  │   ├─ Weather module (wttr.in API)                    │
 │  │   └─ Scripts module (custom user scripts)            │

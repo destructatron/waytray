@@ -3,6 +3,7 @@ pub mod clock;
 pub mod gpu;
 pub mod network;
 pub mod pipewire;
+pub mod privacy;
 pub mod power_profiles;
 pub mod scripts;
 pub mod system;
@@ -453,6 +454,11 @@ impl ModuleRegistry {
         if let Some(ref c) = config.modules.pipewire {
             if c.enabled {
                 enabled.insert("pipewire".to_string());
+            }
+        }
+        if let Some(ref c) = config.modules.privacy {
+            if c.enabled {
+                enabled.insert("privacy".to_string());
             }
         }
         if let Some(ref c) = config.modules.power_profiles {

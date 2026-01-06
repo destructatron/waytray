@@ -33,6 +33,7 @@ pub struct ModulesConfig {
     pub network: Option<NetworkModuleConfig>,
     pub weather: Option<WeatherModuleConfig>,
     pub pipewire: Option<PipewireModuleConfig>,
+    pub privacy: Option<PrivacyModuleConfig>,
     pub power_profiles: Option<PowerProfilesModuleConfig>,
     pub gpu: Option<GpuModuleConfig>,
     #[serde(default)]
@@ -50,6 +51,7 @@ impl Default for ModulesConfig {
             network: None,
             weather: None,
             pipewire: None,
+            privacy: None,
             power_profiles: None,
             gpu: None,
             scripts: Vec::new(),
@@ -234,6 +236,26 @@ impl Default for PipewireModuleConfig {
             show_mic_volume: true,
             mic_max_volume: 100,
             mic_scroll_step: 5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct PrivacyModuleConfig {
+    pub enabled: bool,
+    /// Update interval in seconds
+    pub interval_seconds: u64,
+    /// Show an idle item when no apps are using the microphone
+    pub show_when_idle: bool,
+}
+
+impl Default for PrivacyModuleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval_seconds: 2,
+            show_when_idle: false,
         }
     }
 }
@@ -448,6 +470,12 @@ enabled = true
 # mic_max_volume = 100    # Maximum mic volume (100 = normal, 150 = allow boost)
 # mic_scroll_step = 5     # Mic volume change per scroll step
 
+# Uncomment to enable privacy module (microphone usage)
+# [modules.privacy]
+# enabled = true
+# interval_seconds = 2    # Polling interval in seconds
+# show_when_idle = false  # Show an idle item when no apps are using the mic
+
 # Uncomment to enable power profiles module (requires power-profiles-daemon)
 # [modules.power_profiles]
 # enabled = true
@@ -527,6 +555,11 @@ timeout_ms = 5000
         if let Some(ref pipewire) = self.modules.pipewire {
             if pipewire.enabled && !order.contains(&"pipewire".to_string()) {
                 order.push("pipewire".to_string());
+            }
+        }
+        if let Some(ref privacy) = self.modules.privacy {
+            if privacy.enabled && !order.contains(&"privacy".to_string()) {
+                order.push("privacy".to_string());
             }
         }
         if let Some(ref power_profiles) = self.modules.power_profiles {
