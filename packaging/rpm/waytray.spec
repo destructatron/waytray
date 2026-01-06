@@ -1,5 +1,5 @@
 Name:           waytray
-Version:        1.0.4
+Version:        1.0.5
 Release:        1%{?dist}
 Summary:        Accessible system tray for Wayland
 
@@ -39,6 +39,9 @@ install -Dm755 target/release/waytray-daemon %{buildroot}%{_bindir}/waytray-daem
 %{_bindir}/waytray-daemon
 
 %changelog
+* Tue Jan 06 2026 Harley Richardson <hrichardson2004@hotmail.com> - 1.0.5-1
+- Add privacy module to show microphone usage
+
 * Mon Dec 15 2025 Harley Richardson <hrichardson2004@hotmail.com> - 1.0.4-1
 - Add GPU module for monitoring GPU usage and temperature
 
