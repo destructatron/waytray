@@ -14,12 +14,13 @@ use waytray_daemon::config::Config;
 use waytray_daemon::config_watcher;
 use waytray_daemon::dbus_service;
 use waytray_daemon::modules::battery::BatteryModule;
+use waytray_daemon::modules::brightness::BrightnessModule;
 use waytray_daemon::modules::clock::ClockModule;
 use waytray_daemon::modules::gpu::GpuModule;
 use waytray_daemon::modules::network::NetworkModule;
 use waytray_daemon::modules::pipewire::PipewireModule;
-use waytray_daemon::modules::privacy::PrivacyModule;
 use waytray_daemon::modules::power_profiles::PowerProfilesModule;
+use waytray_daemon::modules::privacy::PrivacyModule;
 use waytray_daemon::modules::scripts::ScriptsModule;
 use waytray_daemon::modules::system::SystemModule;
 use waytray_daemon::modules::tray::TrayModule;
@@ -64,7 +65,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Create the module registry with configured order
     let module_order = config.module_order();
-    let mut registry = ModuleRegistry::new(module_order, notification_service, tray_connection.clone());
+    let mut registry =
+        ModuleRegistry::new(module_order, notification_service, tray_connection.clone());
 
     // Register module factories
     register_module_factories(&mut registry);
@@ -117,7 +119,23 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
         Box::new(|config, _connection| {
             config.modules.battery.as_ref().and_then(|c| {
                 if c.enabled {
-                    Some(Arc::new(BatteryModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                    Some(Arc::new(BatteryModule::new(c.clone()))
+                        as Arc<dyn waytray_daemon::modules::Module>)
+                } else {
+                    None
+                }
+            })
+        }),
+    );
+
+    // Brightness module factory
+    registry.register_factory(
+        "brightness",
+        Box::new(|config, _connection| {
+            config.modules.brightness.as_ref().and_then(|c| {
+                if c.enabled {
+                    Some(Arc::new(BrightnessModule::new(c.clone()))
+                        as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }
@@ -131,7 +149,8 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
         Box::new(|config, _connection| {
             config.modules.clock.as_ref().and_then(|c| {
                 if c.enabled {
-                    Some(Arc::new(ClockModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                    Some(Arc::new(ClockModule::new(c.clone()))
+                        as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }
@@ -145,7 +164,8 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
         Box::new(|config, _connection| {
             config.modules.system.as_ref().and_then(|c| {
                 if c.enabled {
-                    Some(Arc::new(SystemModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                    Some(Arc::new(SystemModule::new(c.clone()))
+                        as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }
@@ -159,7 +179,8 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
         Box::new(|config, _connection| {
             config.modules.network.as_ref().and_then(|c| {
                 if c.enabled {
-                    Some(Arc::new(NetworkModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                    Some(Arc::new(NetworkModule::new(c.clone()))
+                        as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }
@@ -173,7 +194,8 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
         Box::new(|config, _connection| {
             config.modules.weather.as_ref().and_then(|c| {
                 if c.enabled {
-                    Some(Arc::new(WeatherModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                    Some(Arc::new(WeatherModule::new(c.clone()))
+                        as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }
@@ -187,7 +209,8 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
         Box::new(|config, _connection| {
             config.modules.pipewire.as_ref().and_then(|c| {
                 if c.enabled {
-                    Some(Arc::new(PipewireModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                    Some(Arc::new(PipewireModule::new(c.clone()))
+                        as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }
@@ -201,7 +224,8 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
         Box::new(|config, _connection| {
             config.modules.privacy.as_ref().and_then(|c| {
                 if c.enabled {
-                    Some(Arc::new(PrivacyModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                    Some(Arc::new(PrivacyModule::new(c.clone()))
+                        as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }
@@ -215,7 +239,8 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
         Box::new(|config, _connection| {
             config.modules.power_profiles.as_ref().and_then(|c| {
                 if c.enabled {
-                    Some(Arc::new(PowerProfilesModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                    Some(Arc::new(PowerProfilesModule::new(c.clone()))
+                        as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }
@@ -229,7 +254,8 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
         Box::new(|config, _connection| {
             config.modules.gpu.as_ref().and_then(|c| {
                 if c.enabled {
-                    Some(Arc::new(GpuModule::new(c.clone())) as Arc<dyn waytray_daemon::modules::Module>)
+                    Some(Arc::new(GpuModule::new(c.clone()))
+                        as Arc<dyn waytray_daemon::modules::Module>)
                 } else {
                     None
                 }
@@ -253,7 +279,8 @@ fn register_module_factories(registry: &mut ModuleRegistry) {
             if enabled_scripts.is_empty() {
                 None
             } else {
-                Some(Arc::new(ScriptsModule::new(enabled_scripts)) as Arc<dyn waytray_daemon::modules::Module>)
+                Some(Arc::new(ScriptsModule::new(enabled_scripts))
+                    as Arc<dyn waytray_daemon::modules::Module>)
             }
         }),
     );

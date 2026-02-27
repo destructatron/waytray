@@ -28,6 +28,7 @@ pub struct ModulesConfig {
     pub order: Vec<String>,
     pub tray: TrayModuleConfig,
     pub battery: Option<BatteryModuleConfig>,
+    pub brightness: Option<BrightnessModuleConfig>,
     pub clock: Option<ClockModuleConfig>,
     pub system: Option<SystemModuleConfig>,
     pub network: Option<NetworkModuleConfig>,
@@ -46,6 +47,7 @@ impl Default for ModulesConfig {
             order: vec!["tray".to_string()],
             tray: TrayModuleConfig::default(),
             battery: None,
+            brightness: None,
             clock: None,
             system: None,
             network: None,
@@ -99,6 +101,29 @@ impl Default for BatteryModuleConfig {
             low_sound: None,
             critical_sound: None,
             full_sound: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct BrightnessModuleConfig {
+    pub enabled: bool,
+    /// Backlight device name under /sys/class/backlight (empty = auto-select)
+    pub device: String,
+    /// Brightness step in percent for keyboard/actions
+    pub step_percent: u32,
+    /// Update interval in seconds
+    pub interval_seconds: u64,
+}
+
+impl Default for BrightnessModuleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            device: String::new(),
+            step_percent: 5,
+            interval_seconds: 2,
         }
     }
 }
@@ -362,7 +387,10 @@ impl Config {
     /// Creates the config file with defaults if it doesn't exist
     pub fn load_from_path(path: &PathBuf) -> Result<Self> {
         if !path.exists() {
-            tracing::info!("Config file not found at {:?}, creating with defaults", path);
+            tracing::info!(
+                "Config file not found at {:?}, creating with defaults",
+                path
+            );
             Self::write_default_config(path)?;
             return Ok(Self::default());
         }
@@ -427,6 +455,13 @@ enabled = true
 # low_sound = "~/.config/waytray/sounds/low.wav"
 # critical_sound = "~/.config/waytray/sounds/critical.wav"
 # full_sound = "~/.config/waytray/sounds/full.wav"
+
+# Uncomment to enable display brightness module (uses logind D-Bus)
+# [modules.brightness]
+# enabled = true
+# device = ""            # Empty = auto-select best backlight device
+# step_percent = 5       # Brightness change per key/action
+# interval_seconds = 2   # Polling interval in seconds
 
 # Uncomment to enable clock module
 # [modules.clock]
@@ -508,7 +543,8 @@ enabled = true
 [notifications]
 enabled = true
 timeout_ms = 5000
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Get the default config file path
@@ -530,6 +566,11 @@ timeout_ms = 5000
         if let Some(ref battery) = self.modules.battery {
             if battery.enabled && !order.contains(&"battery".to_string()) {
                 order.push("battery".to_string());
+            }
+        }
+        if let Some(ref brightness) = self.modules.brightness {
+            if brightness.enabled && !order.contains(&"brightness".to_string()) {
+                order.push("brightness".to_string());
             }
         }
         if let Some(ref clock) = self.modules.clock {
@@ -591,6 +632,7 @@ mod tests {
         let config = Config::default();
         assert!(config.modules.tray.enabled);
         assert!(config.modules.battery.is_none());
+        assert!(config.modules.brightness.is_none());
         assert!(config.notifications.enabled);
     }
 
@@ -618,6 +660,11 @@ enabled = true
 low_threshold = 15
 critical_threshold = 5
 
+[modules.brightness]
+enabled = true
+step_percent = 10
+interval_seconds = 3
+
 [modules.system]
 enabled = true
 show_cpu = true
@@ -640,6 +687,8 @@ timeout_ms = 3000
         assert!(config.modules.tray.enabled);
         assert!(config.modules.battery.as_ref().unwrap().enabled);
         assert_eq!(config.modules.battery.as_ref().unwrap().low_threshold, 15);
+        assert!(config.modules.brightness.as_ref().unwrap().enabled);
+        assert_eq!(config.modules.brightness.as_ref().unwrap().step_percent, 10);
         assert!(config.modules.system.as_ref().unwrap().show_cpu);
         assert_eq!(config.modules.scripts.len(), 1);
         assert_eq!(config.modules.scripts[0].id, "my-script");
@@ -652,17 +701,21 @@ timeout_ms = 3000
     fn test_module_order() {
         let toml = r#"
 [modules]
-order = ["battery", "tray"]
+order = ["brightness", "battery", "tray"]
 
 [modules.tray]
 enabled = true
 
 [modules.battery]
 enabled = true
+
+[modules.brightness]
+enabled = true
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         let order = config.module_order();
-        assert_eq!(order[0], "battery");
-        assert_eq!(order[1], "tray");
+        assert_eq!(order[0], "brightness");
+        assert_eq!(order[1], "battery");
+        assert_eq!(order[2], "tray");
     }
 }

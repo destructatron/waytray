@@ -1,10 +1,11 @@
 pub mod battery;
+pub mod brightness;
 pub mod clock;
 pub mod gpu;
 pub mod network;
 pub mod pipewire;
-pub mod privacy;
 pub mod power_profiles;
+pub mod privacy;
 pub mod scripts;
 pub mod system;
 pub mod tray;
@@ -132,7 +133,10 @@ pub struct ModuleContext {
 }
 
 impl ModuleContext {
-    pub fn new(sender: broadcast::Sender<ModuleEvent>, cancellation_token: CancellationToken) -> Self {
+    pub fn new(
+        sender: broadcast::Sender<ModuleEvent>,
+        cancellation_token: CancellationToken,
+    ) -> Self {
         Self {
             event_sender: sender,
             cancellation_token,
@@ -189,7 +193,10 @@ pub trait Module: Send + Sync {
     async fn invoke_action(&self, item_id: &str, action_id: &str, x: i32, y: i32);
 
     /// Get menu items for a module item (only supported by tray module)
-    async fn get_menu_items(&self, _item_id: &str) -> anyhow::Result<Vec<crate::dbusmenu::MenuItem>> {
+    async fn get_menu_items(
+        &self,
+        _item_id: &str,
+    ) -> anyhow::Result<Vec<crate::dbusmenu::MenuItem>> {
         anyhow::bail!("Menu not supported by this module")
     }
 
@@ -215,7 +222,8 @@ struct RunningModule {
 }
 
 /// Factory function type for creating modules
-pub type ModuleFactory = Box<dyn Fn(&Config, &zbus::Connection) -> Option<Arc<dyn Module>> + Send + Sync>;
+pub type ModuleFactory =
+    Box<dyn Fn(&Config, &zbus::Connection) -> Option<Arc<dyn Module>> + Send + Sync>;
 
 /// Registry that manages all modules and their items
 pub struct ModuleRegistry {
@@ -276,12 +284,19 @@ impl ModuleRegistry {
         tokio::spawn(async move {
             while let Ok(event) = receiver.recv().await {
                 match event {
-                    ModuleEvent::ItemsUpdated { module_name, items: new_items } => {
+                    ModuleEvent::ItemsUpdated {
+                        module_name,
+                        items: new_items,
+                    } => {
                         let mut items_lock = items.write().await;
                         items_lock.insert(module_name.clone(), new_items);
                         tracing::debug!("Updated items for module: {}", module_name);
                     }
-                    ModuleEvent::Notification { title, body, urgency } => {
+                    ModuleEvent::Notification {
+                        title,
+                        body,
+                        urgency,
+                    } => {
                         tracing::debug!(
                             "Sending notification: {} - {} ({:?})",
                             title,
@@ -431,6 +446,11 @@ impl ModuleRegistry {
                 enabled.insert("battery".to_string());
             }
         }
+        if let Some(ref c) = config.modules.brightness {
+            if c.enabled {
+                enabled.insert("brightness".to_string());
+            }
+        }
         if let Some(ref c) = config.modules.clock {
             if c.enabled {
                 enabled.insert("clock".to_string());
@@ -505,10 +525,7 @@ impl ModuleRegistry {
     /// Get items from a specific module
     pub async fn get_module_items(&self, module_name: &str) -> Vec<ModuleItem> {
         let items_lock = self.items.read().await;
-        items_lock
-            .get(module_name)
-            .cloned()
-            .unwrap_or_default()
+        items_lock.get(module_name).cloned().unwrap_or_default()
     }
 
     /// Get the event sender for subscribing to changes
@@ -536,7 +553,10 @@ impl ModuleRegistry {
     }
 
     /// Get menu items for a module item
-    pub async fn get_menu_items(&self, item_id: &str) -> anyhow::Result<Vec<crate::dbusmenu::MenuItem>> {
+    pub async fn get_menu_items(
+        &self,
+        item_id: &str,
+    ) -> anyhow::Result<Vec<crate::dbusmenu::MenuItem>> {
         // Parse module name from item_id (format: "module:item")
         let parts: Vec<&str> = item_id.splitn(2, ':').collect();
         if parts.len() != 2 {

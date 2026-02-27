@@ -92,7 +92,8 @@ mod imp {
             obj.set_resizable(true);
 
             // Configure the horizontal items box
-            self.items_box.set_orientation(gtk4::Orientation::Horizontal);
+            self.items_box
+                .set_orientation(gtk4::Orientation::Horizontal);
             self.items_box.set_spacing(4);
 
             // Set accessible role for the items container
@@ -128,7 +129,8 @@ mod imp {
                 move |_, keyval, _keycode, _state| {
                     let imp = obj.imp();
                     // Record keyboard interaction to prevent spurious close-on-focus-loss
-                    imp.last_keyboard_interaction.set(Some(std::time::Instant::now()));
+                    imp.last_keyboard_interaction
+                        .set(Some(std::time::Instant::now()));
                     // Cancel any pending close - user is actively interacting
                     if imp.pending_close_id.get() > 0 {
                         imp.pending_close_id.set(0);
@@ -177,16 +179,19 @@ mod imp {
                     let close_id = imp.pending_close_id.get().wrapping_add(1).max(1);
                     imp.pending_close_id.set(close_id);
 
-                    glib::timeout_add_local_once(std::time::Duration::from_millis(150), glib::clone!(
-                        #[weak]
-                        window,
-                        move || {
-                            let imp = window.imp();
-                            if imp.pending_close_id.get() == close_id && !window.is_active() {
-                                window.close();
+                    glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(150),
+                        glib::clone!(
+                            #[weak]
+                            window,
+                            move || {
+                                let imp = window.imp();
+                                if imp.pending_close_id.get() == close_id && !window.is_active() {
+                                    window.close();
+                                }
                             }
-                        }
-                    ));
+                        ),
+                    );
                 }
             });
         }
@@ -206,9 +211,7 @@ glib::wrapper! {
 
 impl WayTrayWindow {
     pub fn new(app: &gtk4::Application) -> Self {
-        let window: Self = glib::Object::builder()
-            .property("application", app)
-            .build();
+        let window: Self = glib::Object::builder().property("application", app).build();
 
         // Initialize connection to daemon
         window.connect_to_daemon();
@@ -316,21 +319,15 @@ impl WayTrayWindow {
 
                 let window = self.clone();
                 widget.connect_scroll_up(move |widget| {
-                    // Invoke the appropriate volume up action based on what the item supports
-                    if widget.has_action("mic_volume_up") {
-                        window.invoke_item_action(widget, "mic_volume_up");
-                    } else if widget.has_action("volume_up") {
-                        window.invoke_item_action(widget, "volume_up");
+                    if let Some(action_id) = widget.step_up_action_id() {
+                        window.invoke_item_action(widget, &action_id);
                     }
                 });
 
                 let window = self.clone();
                 widget.connect_scroll_down(move |widget| {
-                    // Invoke the appropriate volume down action based on what the item supports
-                    if widget.has_action("mic_volume_down") {
-                        window.invoke_item_action(widget, "mic_volume_down");
-                    } else if widget.has_action("volume_down") {
-                        window.invoke_item_action(widget, "volume_down");
+                    if let Some(action_id) = widget.step_down_action_id() {
+                        window.invoke_item_action(widget, &action_id);
                     }
                 });
 
@@ -503,7 +500,12 @@ impl WayTrayWindow {
 
         glib::spawn_future_local(async move {
             if let Err(e) = client.invoke_action(&item_id, &action_id, x, y).await {
-                tracing::error!("Failed to invoke action {} on {}: {}", action_id, item_id, e);
+                tracing::error!(
+                    "Failed to invoke action {} on {}: {}",
+                    action_id,
+                    item_id,
+                    e
+                );
             }
         });
     }
@@ -524,7 +526,12 @@ impl WayTrayWindow {
 
         glib::spawn_future_local(async move {
             if let Err(e) = client.invoke_action(&item_id, &action_id, x, y).await {
-                tracing::error!("Failed to invoke action {} on {}: {}", action_id, item_id, e);
+                tracing::error!(
+                    "Failed to invoke action {} on {}: {}",
+                    action_id,
+                    item_id,
+                    e
+                );
             }
         });
     }
@@ -576,10 +583,12 @@ impl WayTrayWindow {
 
                             // Set suppression FIRST, before any operations that might trigger
                             // is-active changes (like decrementing popover count or grabbing focus)
-                            let suppress_until = std::time::Instant::now() + std::time::Duration::from_millis(500);
+                            let suppress_until =
+                                std::time::Instant::now() + std::time::Duration::from_millis(500);
                             imp.suppress_close_until.set(Some(suppress_until));
 
-                            imp.open_popover_count.set(imp.open_popover_count.get().saturating_sub(1));
+                            imp.open_popover_count
+                                .set(imp.open_popover_count.get().saturating_sub(1));
 
                             // Restore focus to the parent widget (the module item)
                             if let Some(parent) = popover.parent() {
@@ -587,18 +596,24 @@ impl WayTrayWindow {
                             }
 
                             // Schedule a check after suppression period - if focus didn't return, close
-                            glib::timeout_add_local_once(std::time::Duration::from_millis(600), glib::clone!(
-                                #[weak]
-                                window,
-                                move || {
-                                    let imp = window.imp();
-                                    if let Some(until) = imp.suppress_close_until.get() {
-                                        if until == suppress_until && !window.is_active() && imp.open_popover_count.get() == 0 {
-                                            window.close();
+                            glib::timeout_add_local_once(
+                                std::time::Duration::from_millis(600),
+                                glib::clone!(
+                                    #[weak]
+                                    window,
+                                    move || {
+                                        let imp = window.imp();
+                                        if let Some(until) = imp.suppress_close_until.get() {
+                                            if until == suppress_until
+                                                && !window.is_active()
+                                                && imp.open_popover_count.get() == 0
+                                            {
+                                                window.close();
+                                            }
                                         }
                                     }
-                                }
-                            ));
+                                ),
+                            );
                         }
                     ));
 
@@ -612,7 +627,11 @@ impl WayTrayWindow {
                 }
                 Err(e) => {
                     // DBusMenu fetch failed - try legacy SNI context_menu method
-                    tracing::debug!("DBusMenu failed for {}: {}, trying SNI fallback", item_id, e);
+                    tracing::debug!(
+                        "DBusMenu failed for {}: {}, trying SNI fallback",
+                        item_id,
+                        e
+                    );
                     if let Err(e) = client.invoke_action(&item_id, "context_menu", x, y).await {
                         tracing::warn!("SNI context_menu also failed for {}: {}", item_id, e);
                     }

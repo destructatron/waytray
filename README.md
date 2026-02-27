@@ -120,7 +120,7 @@ WayTray is configured via a TOML file at `~/.config/waytray/config.toml`. If the
 [modules]
 # Module display order (left to right)
 # Modules not listed appear after these
-order = ["tray", "pipewire", "privacy", "power_profiles", "battery", "system", "gpu", "network", "weather", "clock", "scripts"]
+order = ["tray", "pipewire", "privacy", "power_profiles", "battery", "brightness", "system", "gpu", "network", "weather", "clock", "scripts"]
 
 [modules.tray]
 enabled = true
@@ -130,6 +130,12 @@ enabled = true
 low_threshold = 20          # Notify at this percentage
 critical_threshold = 10     # Critical notification at this percentage
 notify_full_charge = false  # Notify when fully charged
+
+[modules.brightness]
+enabled = true
+device = ""                 # Empty = auto-select best backlight device
+step_percent = 5            # Brightness change per key/action
+interval_seconds = 2
 
 [modules.clock]
 enabled = true
@@ -212,6 +218,19 @@ Displays battery status and sends notifications for low/critical/full states. Us
 | `full_sound` | string | `null` | Sound file to play when fully charged (optional) |
 
 **Sound files:** Paths can use `~` for home directory. Supports any format GStreamer can play (WAV, OGG, MP3, etc.).
+
+#### Brightness (`[modules.brightness]`)
+
+Displays and controls display backlight using `org.freedesktop.login1.Manager.SetBrightness`. When supported, the module shows the current brightness percentage and responds to Up/Down arrow keys while focused.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `true` | Enable/disable the brightness module |
+| `device` | string | `""` | Backlight device name under `/sys/class/backlight`; empty = auto-select |
+| `step_percent` | u32 | `5` | Brightness change per keyboard/action step |
+| `interval_seconds` | u64 | `2` | Polling interval in seconds |
+
+**Behavior:** The module auto-selects the backlight device with the highest `max_brightness` unless `device` is set. If brightness control is unavailable, the module stays hidden.
 
 #### Clock (`[modules.clock]`)
 

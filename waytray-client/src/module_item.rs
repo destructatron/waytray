@@ -80,15 +80,13 @@ mod imp {
 
             // Set up key event controller
             let key_controller = gtk4::EventControllerKey::new();
-            key_controller.connect_key_pressed(
-                glib::clone!(
-                    #[weak]
-                    obj,
-                    #[upgrade_or]
-                    glib::Propagation::Proceed,
-                    move |_, keyval, _keycode, state| obj.handle_key_press(keyval, state)
-                ),
-            );
+            key_controller.connect_key_pressed(glib::clone!(
+                #[weak]
+                obj,
+                #[upgrade_or]
+                glib::Propagation::Proceed,
+                move |_, keyval, _keycode, state| obj.handle_key_press(keyval, state)
+            ));
             obj.add_controller(key_controller);
         }
     }
@@ -266,17 +264,19 @@ impl ModuleItemWidget {
 
     /// Get the default action ID for this item
     pub fn default_action_id(&self) -> Option<String> {
-        self.imp()
-            .item_data
-            .borrow()
-            .as_ref()
-            .and_then(|item| {
-                item.actions
-                    .iter()
-                    .find(|a| a.is_default)
-                    .or_else(|| item.actions.first())
-                    .map(|a| a.id.clone())
-            })
+        self.imp().item_data.borrow().as_ref().and_then(|item| {
+            item.actions
+                .iter()
+                .find(|a| a.is_default)
+                .or_else(|| {
+                    if item.actions.len() == 1 {
+                        item.actions.first()
+                    } else {
+                        None
+                    }
+                })
+                .map(|a| a.id.clone())
+        })
     }
 
     /// Check if this item has a context menu action
@@ -292,6 +292,30 @@ impl ModuleItemWidget {
             .as_ref()
             .map(|item| item.actions.iter().any(|a| a.id == action_id))
             .unwrap_or(false)
+    }
+
+    fn action_id_by_preference(&self, exact_matches: &[&str], suffix: &str) -> Option<String> {
+        let item_data = self.imp().item_data.borrow();
+        let item = item_data.as_ref()?;
+
+        for action_id in exact_matches {
+            if let Some(action) = item.actions.iter().find(|a| a.id == *action_id) {
+                return Some(action.id.clone());
+            }
+        }
+
+        item.actions
+            .iter()
+            .find(|a| a.id.ends_with(suffix))
+            .map(|a| a.id.clone())
+    }
+
+    pub fn step_up_action_id(&self) -> Option<String> {
+        self.action_id_by_preference(&["mic_volume_up", "volume_up"], "_up")
+    }
+
+    pub fn step_down_action_id(&self) -> Option<String> {
+        self.action_id_by_preference(&["mic_volume_down", "volume_down"], "_down")
     }
 
     /// Handle key press events
@@ -313,9 +337,9 @@ impl ModuleItemWidget {
                 glib::Propagation::Stop
             }
 
-            // Up arrow: Scroll up / volume up action
+            // Up arrow: Scroll up / step-up action
             gdk::Key::Up | gdk::Key::KP_Up => {
-                if self.has_action("volume_up") || self.has_action("mic_volume_up") {
+                if self.step_up_action_id().is_some() {
                     self.emit_by_name::<()>("scroll-up", &[]);
                     glib::Propagation::Stop
                 } else {
@@ -323,9 +347,9 @@ impl ModuleItemWidget {
                 }
             }
 
-            // Down arrow: Scroll down / volume down action
+            // Down arrow: Scroll down / step-down action
             gdk::Key::Down | gdk::Key::KP_Down => {
-                if self.has_action("volume_down") || self.has_action("mic_volume_down") {
+                if self.step_down_action_id().is_some() {
                     self.emit_by_name::<()>("scroll-down", &[]);
                     glib::Propagation::Stop
                 } else {
